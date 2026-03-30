@@ -39,7 +39,9 @@ export interface PhysicsStatePayload {
   ice_base: Float64Array;    // Ice base elevation (bedrock if grounded, -draft if floating)
   gl_position: number;       // Grounding line position (km)
   gl_velocity: number;       // Velocity at grounding line (m/yr)
+  gl_flux_km3_yr: number;    // Ice flux through the grounding line (km³/yr)
   volume: number;            // Ice volume (km³)
+  mass_change_gt: number;    // Total ice mass change relative to initial state (Gt)
   sea_level: number;         // Sea level equivalent change (m)
   shelf_exists: boolean;     // Whether an ice shelf exists
   water_pressure: Float64Array; // Subglacial water pressure profile

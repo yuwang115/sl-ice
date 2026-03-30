@@ -13,7 +13,7 @@
 
 import {
   DEFAULT_DX, DEFAULT_NZ, DEFAULT_DOMAIN_LENGTH, DEFAULT_DT,
-  VOLUME_TO_SLE,
+  RHO_ICE, VOLUME_TO_SLE,
 } from './constants';
 import { solveBP, depthAverageVelocity, surfaceVelocity, basalVelocity } from './bp-solver';
 import { computeSMB } from './smb';
@@ -28,6 +28,42 @@ import type {
   ModelState, ModelGrid, ScenarioConfig, UserParams,
   PhysicsStatePayload, GameEvent,
 } from './types';
+
+const FLOWLINE_WIDTH_METERS = 1000;
+const GIGATONNES_PER_KM3_ICE = RHO_ICE * 1e-3;
+
+function interpolateAtGroundingLine(
+  values: Float64Array,
+  glIndex: number,
+  glPosition: number,
+  dx: number,
+): number {
+  if (values.length === 0) return 0;
+
+  const leftIndex = Math.max(0, Math.min(glIndex, values.length - 1));
+  const rightIndex = Math.min(leftIndex + 1, values.length - 1);
+  if (leftIndex === rightIndex) return values[leftIndex];
+
+  const leftX = leftIndex * dx;
+  const lambda = Math.max(0, Math.min(1, (glPosition - leftX) / dx));
+  return values[leftIndex] * (1 - lambda) + values[rightIndex] * lambda;
+}
+
+function computeGroundingLineFlux(state: ModelState): number {
+  const { H, gl_index, gl_position, grid, u_depth_avg } = state;
+  const thickness = interpolateAtGroundingLine(H, gl_index, gl_position, grid.dx);
+  const velocity = interpolateAtGroundingLine(u_depth_avg, gl_index, gl_position, grid.dx);
+
+  if (Number.isFinite(thickness) === false || Number.isFinite(velocity) === false || thickness <= 0) {
+    return 0;
+  }
+
+  return (thickness * velocity * FLOWLINE_WIDTH_METERS) / 1e9;
+}
+
+function computeMassChangeGt(currentVolume: number, initialVolume: number): number {
+  return (currentVolume - initialVolume) * GIGATONNES_PER_KM3_ICE;
+}
 
 /**
  * Create the computational grid.
@@ -337,7 +373,9 @@ export function extractStatePayload(state: ModelState): PhysicsStatePayload {
     gl_velocity: state.gl_index < nx
       ? state.u_depth_avg[state.gl_index]
       : 0,
+    gl_flux_km3_yr: computeGroundingLineFlux(state),
     volume: state.volume,
+    mass_change_gt: computeMassChangeGt(state.volume, state.initial_volume),
     sea_level: state.sea_level,
     shelf_exists: state.is_floating.some((v: number) => v === 1),
     water_pressure: new Float64Array(state.W),
