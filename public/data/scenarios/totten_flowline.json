@@ -1,0 +1,45 @@
+{
+  "name": "Totten Glacier",
+  "description_en": "East Antarctica's fastest-thinning glacier. Warm ocean water reaches through deep channels beneath the ice, melting it from below. The Aurora Subglacial Basin behind it holds enormous ice reserves.",
+  "description_zh": "东南极减薄最快的冰川。暖洋流通过冰下深水道到达底部进行融化。其后方的奥罗拉冰下盆地蕴藏着巨大的冰储量。",
+  "domain_length": 800,
+  "T_atm_base": -23,
+  "T_ocean_base": -0.8,
+  "P_snow_base": 0.25,
+  "enable_hydrology": true,
+  "bedrock": [
+    300, 260, 210, 150, 80, 10, -70, -160, -260, -370,
+    -480, -580, -670, -740, -800, -850, -890, -920, -940, -950,
+    -940, -920, -880, -830, -770, -710, -660, -620, -600, -600,
+    -620, -660, -720, -790, -860, -930, -990, -1040, -1080, -1110,
+    -1130, -1150, -1170, -1190, -1210, -1230, -1250, -1270, -1290, -1310,
+    -1330, -1350, -1370, -1390, -1410, -1430, -1450, -1470, -1490, -1510,
+    -1530, -1550, -1570, -1590, -1610, -1630, -1650, -1670, -1690, -1710,
+    -1730, -1750, -1770, -1790, -1810, -1830, -1850, -1870, -1890, -1910
+  ],
+  "initial_H": [
+    3000, 2970, 2930, 2880, 2820, 2750, 2670, 2580, 2480, 2370,
+    2250, 2130, 2000, 1870, 1740, 1620, 1500, 1390, 1290, 1200,
+    1120, 1050, 990, 940, 900, 870, 840, 810, 780, 750,
+    720, 690, 650, 610, 570, 520, 470, 420, 370, 320,
+    270, 220, 170, 120, 80, 40, 10, 0, 0, 0
+  ],
+  "sea_level_potential": 3.5,
+  "region_info": {
+    "name_en": "Totten Glacier",
+    "name_zh": "托滕冰川",
+    "location": "East Antarctica",
+    "sea_level_m": 3.5,
+    "current_retreat_m_yr": 300,
+    "key_facts_en": [
+      "Drains the Aurora Subglacial Basin — ~3.5 m of potential sea level rise",
+      "Warm Circumpolar Deep Water reaches the grounding line through deep channels",
+      "Significant subglacial water activity detected beneath the glacier"
+    ],
+    "key_facts_zh": [
+      "排泄奥罗拉冰下盆地——约3.5米潜在海平面上升",
+      "暖环极深层水通过深水道到达接地线",
+      "冰川下方探测到显著的冰下水活动"
+    ]
+  }
+}

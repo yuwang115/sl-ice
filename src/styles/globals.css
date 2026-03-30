@@ -1,0 +1,361 @@
+@import "tailwindcss";
+
+/* ─── Design Tokens: Light Theme (Ghibli Daytime) ──────── */
+:root,
+[data-theme="light"] {
+  --bg-primary: #f5efe6;
+  --bg-deep: #ece4d8;
+  --bg-panel: rgba(255, 252, 245, 0.82);
+  --bg-panel-solid: #faf7f0;
+  --bg-panel-hover: rgba(255, 250, 240, 0.95);
+  --bg-card: rgba(255, 248, 235, 0.7);
+  --bg-card-hover: rgba(255, 245, 225, 0.88);
+
+  --border: rgba(180, 160, 130, 0.25);
+  --border-hover: rgba(160, 130, 90, 0.4);
+  --border-active: rgba(140, 110, 70, 0.55);
+
+  --text-primary: #2d1810;
+  --text-secondary: #5a4a3a;
+  --text-muted: #9a8a7a;
+
+  --accent: #4a90a8;
+  --accent-light: #3a7d96;
+  --accent-teal: #3d8b6e;
+  --accent-warm: #d4853a;
+  --accent-danger: #c45050;
+
+  --shadow-sm: 0 4px 12px rgba(120, 100, 70, 0.08);
+  --shadow-md: 0 8px 24px rgba(120, 100, 70, 0.12);
+  --shadow-lg: 0 14px 40px rgba(120, 100, 70, 0.16);
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  --blur-panel: 16px;
+  --transition: 250ms ease-in-out;
+
+  --slider-track-bg: rgba(160, 140, 110, 0.15);
+  --scrollbar-thumb: rgba(160, 140, 110, 0.25);
+  --scrollbar-thumb-hover: rgba(140, 120, 90, 0.4);
+
+  /* Severity colors */
+  --severity-info-bg: rgba(74, 144, 168, 0.12);
+  --severity-info-border: rgba(74, 144, 168, 0.3);
+  --severity-warning-bg: rgba(212, 133, 58, 0.12);
+  --severity-warning-border: rgba(212, 133, 58, 0.3);
+  --severity-critical-bg: rgba(196, 80, 80, 0.12);
+  --severity-critical-border: rgba(196, 80, 80, 0.3);
+
+  /* Card accent variants */
+  --card-accent-blue: rgba(74, 144, 168, 0.1);
+  --card-border-blue: rgba(74, 144, 168, 0.25);
+  --card-accent-amber: rgba(212, 133, 58, 0.1);
+  --card-border-amber: rgba(212, 133, 58, 0.25);
+  --card-accent-teal: rgba(61, 139, 110, 0.1);
+  --card-border-teal: rgba(61, 139, 110, 0.25);
+  --card-accent-red: rgba(196, 80, 80, 0.1);
+  --card-border-red: rgba(196, 80, 80, 0.25);
+  --card-accent-purple: rgba(139, 92, 196, 0.1);
+  --card-border-purple: rgba(139, 92, 196, 0.25);
+
+  /* Badge */
+  --badge-bg: rgba(74, 144, 168, 0.1);
+  --badge-border: rgba(74, 144, 168, 0.2);
+  --badge-text: var(--accent);
+
+  /* Won/locked states */
+  --won-bg: rgba(61, 139, 110, 0.08);
+  --won-border: rgba(61, 139, 110, 0.35);
+}
+
+/* ─── Design Tokens: Dark Theme (Ghibli Nighttime) ─────── */
+[data-theme="dark"] {
+  --bg-primary: #0f1729;
+  --bg-deep: #0a1020;
+  --bg-panel: rgba(15, 25, 50, 0.88);
+  --bg-panel-solid: #121e38;
+  --bg-panel-hover: rgba(20, 35, 65, 0.95);
+  --bg-card: rgba(18, 30, 55, 0.7);
+  --bg-card-hover: rgba(25, 42, 75, 0.85);
+
+  --border: rgba(100, 140, 200, 0.15);
+  --border-hover: rgba(100, 150, 220, 0.3);
+  --border-active: rgba(107, 196, 232, 0.45);
+
+  --text-primary: #e8dfd0;
+  --text-secondary: #b0a898;
+  --text-muted: #6a6258;
+
+  --accent: #5aace0;
+  --accent-light: #6bc4e8;
+  --accent-teal: #4dbfa0;
+  --accent-warm: #e8a860;
+  --accent-danger: #e06868;
+
+  --shadow-sm: 0 4px 12px rgba(5, 10, 30, 0.25);
+  --shadow-md: 0 8px 24px rgba(5, 10, 30, 0.35);
+  --shadow-lg: 0 14px 40px rgba(5, 10, 30, 0.45);
+
+  --slider-track-bg: rgba(100, 140, 200, 0.12);
+  --scrollbar-thumb: rgba(100, 140, 200, 0.2);
+  --scrollbar-thumb-hover: rgba(100, 150, 220, 0.35);
+
+  /* Severity colors */
+  --severity-info-bg: rgba(90, 172, 224, 0.15);
+  --severity-info-border: rgba(107, 196, 232, 0.35);
+  --severity-warning-bg: rgba(232, 168, 96, 0.15);
+  --severity-warning-border: rgba(232, 168, 96, 0.35);
+  --severity-critical-bg: rgba(224, 104, 104, 0.15);
+  --severity-critical-border: rgba(224, 104, 104, 0.35);
+
+  /* Card accent variants */
+  --card-accent-blue: rgba(107, 196, 232, 0.12);
+  --card-border-blue: rgba(107, 196, 232, 0.25);
+  --card-accent-amber: rgba(232, 168, 96, 0.12);
+  --card-border-amber: rgba(232, 168, 96, 0.25);
+  --card-accent-teal: rgba(77, 191, 160, 0.12);
+  --card-border-teal: rgba(77, 191, 160, 0.25);
+  --card-accent-red: rgba(224, 104, 104, 0.12);
+  --card-border-red: rgba(224, 104, 104, 0.25);
+  --card-accent-purple: rgba(168, 130, 224, 0.12);
+  --card-border-purple: rgba(168, 130, 224, 0.25);
+
+  /* Badge */
+  --badge-bg: rgba(107, 196, 232, 0.1);
+  --badge-border: rgba(107, 196, 232, 0.2);
+  --badge-text: var(--accent-light);
+
+  /* Won/locked states */
+  --won-bg: rgba(77, 191, 160, 0.08);
+  --won-border: rgba(77, 191, 160, 0.4);
+}
+
+/* ─── Base Reset ─────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Light theme body: warm parchment with subtle blushes */
+body {
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(212, 180, 130, 0.15) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 75%, rgba(120, 170, 140, 0.1) 0%, transparent 55%),
+    linear-gradient(180deg, #ece4d8 0%, #f5efe6 40%, #f8f2ea 100%);
+  transition: background 0.5s ease-in-out;
+}
+
+[data-theme="dark"] body {
+  background:
+    radial-gradient(ellipse at 14% 16%, rgba(60, 100, 160, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse at 86% 82%, rgba(50, 140, 120, 0.12) 0%, transparent 55%),
+    linear-gradient(180deg, #0a1020 0%, #0f1729 40%, #132240 100%);
+}
+
+/* ─── Data Typography ───────────────────────────────────── */
+.font-data {
+  font-family: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+/* ─── Glassmorphic Panel (Ghibli: soft frosted parchment / aurora glass) ── */
+.glass-panel {
+  background: var(--bg-panel);
+  backdrop-filter: blur(var(--blur-panel));
+  -webkit-backdrop-filter: blur(var(--blur-panel));
+  border: 1px solid var(--border);
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.glass-panel:hover {
+  border-color: var(--border-hover);
+}
+
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: all var(--transition);
+}
+
+.glass-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
+}
+
+/* ─── Custom Slider Styles ───────────────────────────────── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  border-radius: 3px;
+  outline: none;
+  background: var(--slider-track-bg);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-panel-solid);
+  cursor: pointer;
+  border: 2.5px solid var(--accent);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.15);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg-panel-solid);
+  cursor: pointer;
+  border: 2.5px solid var(--accent);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+}
+
+/* ─── Pill Button ────────────────────────────────────────── */
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 14px;
+  border-radius: var(--radius-pill);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.pill-btn:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  background: var(--bg-card);
+}
+
+.pill-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* ─── Animation Utilities ────────────────────────────────── */
+@keyframes slide-in-from-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ghibli-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes subtle-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes gentle-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.012); }
+}
+
+.animate-in {
+  animation: ghibli-fade-in 0.4s ease-out;
+}
+
+.animate-glow {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: subtle-float 6s ease-in-out infinite;
+}
+
+.animate-breathe {
+  animation: gentle-breathe 4s ease-in-out infinite;
+}
+
+/* ─── Accent Glow Text ───────────────────────────────────── */
+.text-glow {
+  text-shadow: 0 1px 8px rgba(74, 144, 168, 0.2);
+}
+
+[data-theme="dark"] .text-glow {
+  text-shadow: 0 0 20px rgba(107, 196, 232, 0.4), 0 0 60px rgba(107, 196, 232, 0.15);
+}
+
+.text-glow-warm {
+  text-shadow: 0 1px 8px rgba(212, 133, 58, 0.2);
+}
+
+[data-theme="dark"] .text-glow-warm {
+  text-shadow: 0 0 20px rgba(232, 168, 96, 0.4), 0 0 60px rgba(232, 168, 96, 0.15);
+}

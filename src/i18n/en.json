@@ -1,0 +1,32 @@
+{
+  "title": "SL-ICE",
+  "subtitle": "Stream-Line Interactive Cryosphere Explorer",
+  "sandbox": "Sandbox",
+  "challenges": "Challenges",
+  "realWorld": "Real World",
+  "controls": "Controls",
+  "atmosphere": "Atmosphere \u0394T",
+  "ocean": "Ocean \u0394T",
+  "snowfall": "Snowfall",
+  "drainage": "Drainage Efficiency",
+  "hydrology": "Subglacial Hydrology",
+  "year": "Year",
+  "volume": "Volume",
+  "seaLevel": "Sea Level",
+  "glPosition": "GL Position",
+  "glVelocity": "GL Velocity",
+  "play": "Play",
+  "pause": "Pause",
+  "reset": "Reset",
+  "back": "Back to menu",
+  "share": "Share",
+  "tryAgain": "Try Again",
+  "learnMore": "Learn More",
+  "cities": {
+    "0.5": "Low-lying islands threatened",
+    "1.0": "Shanghai, Miami face severe flooding",
+    "2.0": "Tokyo, New York at risk",
+    "3.0": "Major coastal cities worldwide impacted",
+    "5.0": "Catastrophic global coastal flooding"
+  }
+}

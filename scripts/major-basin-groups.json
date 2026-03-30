@@ -1,0 +1,1537 @@
+{
+  "dataset": "Antarctica major basin groups for SLICE flowline generation",
+  "source_basins_json": "imbie_refined_basins_v2.json",
+  "group_count": 70,
+  "anchor_rule": "Top 70 refined basins by area; remaining basins assigned by nearest label-point distance.",
+  "groups": [
+    {
+      "group_id": "recovery",
+      "group_name_en": "Recovery",
+      "group_name_zh": "Recovery流域",
+      "region": "east",
+      "anchor_basin_id": 140,
+      "anchor_basin_name": "Recovery",
+      "anchor_label_xy_m": [
+        290168,
+        768505
+      ],
+      "anchor_lonlat": [
+        159.3147,
+        -82.4501
+      ],
+      "member_basins": [
+        "Recovery"
+      ],
+      "total_area_km2": 964414.98
+    },
+    {
+      "group_id": "byrd",
+      "group_name_en": "Byrd",
+      "group_name_zh": "伯德冰川",
+      "region": "east",
+      "anchor_basin_id": 21,
+      "anchor_basin_name": "Byrd",
+      "anchor_label_xy_m": [
+        889284,
+        -535529
+      ],
+      "anchor_lonlat": [
+        58.9435,
+        -80.467
+      ],
+      "member_basins": [
+        "Byrd"
+      ],
+      "total_area_km2": 897328.57
+    },
+    {
+      "group_id": "totten",
+      "group_name_en": "Totten",
+      "group_name_zh": "托滕冰川",
+      "region": "east",
+      "anchor_basin_id": 171,
+      "anchor_basin_name": "Totten",
+      "anchor_label_xy_m": [
+        1647661,
+        -580638
+      ],
+      "anchor_lonlat": [
+        70.5875,
+        -74.0216
+      ],
+      "member_basins": [
+        "Totten"
+      ],
+      "total_area_km2": 549820.89
+    },
+    {
+      "group_id": "slessor",
+      "group_name_en": "Slessor",
+      "group_name_zh": "斯莱瑟冰川",
+      "region": "east",
+      "anchor_basin_id": 162,
+      "anchor_basin_name": "Slessor",
+      "anchor_label_xy_m": [
+        88746,
+        1335851
+      ],
+      "anchor_lonlat": [
+        176.1992,
+        -77.7235
+      ],
+      "member_basins": [
+        "Slessor"
+      ],
+      "total_area_km2": 477884.55
+    },
+    {
+      "group_id": "mellor",
+      "group_name_en": "Mellor",
+      "group_name_zh": "梅勒冰川",
+      "region": "east",
+      "anchor_basin_id": 106,
+      "anchor_basin_name": "Mellor",
+      "anchor_label_xy_m": [
+        1138092,
+        774639
+      ],
+      "anchor_lonlat": [
+        124.241,
+        -77.3785
+      ],
+      "member_basins": [
+        "Mellor"
+      ],
+      "total_area_km2": 426665.25
+    },
+    {
+      "group_id": "lambert",
+      "group_name_en": "Lambert",
+      "group_name_zh": "兰伯特冰川",
+      "region": "east",
+      "anchor_basin_id": 79,
+      "anchor_basin_name": "Lambert",
+      "anchor_label_xy_m": [
+        1370086,
+        235152
+      ],
+      "anchor_lonlat": [
+        99.739,
+        -77.2565
+      ],
+      "member_basins": [
+        "Lambert"
+      ],
+      "total_area_km2": 413670.68
+    },
+    {
+      "group_id": "academy",
+      "group_name_en": "Academy",
+      "group_name_zh": "Academy流域",
+      "region": "east",
+      "anchor_basin_id": 2,
+      "anchor_basin_name": "Academy",
+      "anchor_label_xy_m": [
+        78730,
+        106421
+      ],
+      "anchor_lonlat": [
+        143.5061,
+        -88.7817
+      ],
+      "member_basins": [
+        "Academy"
+      ],
+      "total_area_km2": 390522.44
+    },
+    {
+      "group_id": "cook",
+      "group_name_en": "Cook",
+      "group_name_zh": "库克冰架 / 威尔克斯地",
+      "region": "east",
+      "anchor_basin_id": 28,
+      "anchor_basin_name": "Cook",
+      "anchor_label_xy_m": [
+        995683,
+        -1717438
+      ],
+      "anchor_lonlat": [
+        30.103,
+        -71.8755
+      ],
+      "member_basins": [
+        "Cook",
+        "Slava"
+      ],
+      "total_area_km2": 310912.07
+    },
+    {
+      "group_id": "baudouin",
+      "group_name_en": "Baudouin",
+      "group_name_zh": "Baudouin流域",
+      "region": "east",
+      "anchor_basin_id": 12,
+      "anchor_basin_name": "Baudouin",
+      "anchor_label_xy_m": [
+        949101,
+        1526830
+      ],
+      "anchor_lonlat": [
+        148.1343,
+        -73.563
+      ],
+      "member_basins": [
+        "Baudouin"
+      ],
+      "total_area_km2": 295863.02
+    },
+    {
+      "group_id": "nimrod",
+      "group_name_en": "Nimrod",
+      "group_name_zh": "尼姆罗德冰川",
+      "region": "east",
+      "anchor_basin_id": 116,
+      "anchor_basin_name": "Nimrod",
+      "anchor_label_xy_m": [
+        492658,
+        -116361
+      ],
+      "anchor_lonlat": [
+        76.7108,
+        -85.3434
+      ],
+      "member_basins": [
+        "Nimrod"
+      ],
+      "total_area_km2": 269848.56
+    },
+    {
+      "group_id": "denman-scott",
+      "group_name_en": "Denman Scott",
+      "group_name_zh": "丹曼冰川",
+      "region": "east",
+      "anchor_basin_id": 34,
+      "anchor_basin_name": "Denman Scott",
+      "anchor_label_xy_m": [
+        2182715,
+        -369656
+      ],
+      "anchor_lonlat": [
+        80.3878,
+        -69.8276
+      ],
+      "member_basins": [
+        "Denman Scott"
+      ],
+      "total_area_km2": 267488.97
+    },
+    {
+      "group_id": "moscow",
+      "group_name_en": "Moscow",
+      "group_name_zh": "Moscow流域",
+      "region": "east",
+      "anchor_basin_id": 113,
+      "anchor_basin_name": "Moscow",
+      "anchor_label_xy_m": [
+        1828077,
+        -1123169
+      ],
+      "anchor_lonlat": [
+        58.4335,
+        -70.4377
+      ],
+      "member_basins": [
+        "Moscow"
+      ],
+      "total_area_km2": 222382.01
+    },
+    {
+      "group_id": "leopold-and-astrid-coast",
+      "group_name_en": "Leopold and Astrid Coast",
+      "group_name_zh": "Leopold and Astrid Coast流域",
+      "region": "east",
+      "anchor_basin_id": 95,
+      "anchor_basin_name": "Leopold and Astrid Coast",
+      "anchor_label_xy_m": [
+        2206345,
+        91632
+      ],
+      "anchor_lonlat": [
+        92.3782,
+        -69.8771
+      ],
+      "member_basins": [
+        "Leopold and Astrid Coast"
+      ],
+      "total_area_km2": 215094.71
+    },
+    {
+      "group_id": "american-highland",
+      "group_name_en": "American HighLand",
+      "group_name_zh": "American HighLand流域",
+      "region": "east",
+      "anchor_basin_id": 6,
+      "anchor_basin_name": "American HighLand",
+      "anchor_label_xy_m": [
+        1834008,
+        403919
+      ],
+      "anchor_lonlat": [
+        102.4204,
+        -72.8401
+      ],
+      "member_basins": [
+        "American HighLand"
+      ],
+      "total_area_km2": 210130.09
+    },
+    {
+      "group_id": "david",
+      "group_name_en": "David",
+      "group_name_zh": "大卫冰川",
+      "region": "east",
+      "anchor_basin_id": 33,
+      "anchor_basin_name": "David",
+      "anchor_label_xy_m": [
+        752476,
+        -1416887
+      ],
+      "anchor_lonlat": [
+        27.9717,
+        -75.3123
+      ],
+      "member_basins": [
+        "David"
+      ],
+      "total_area_km2": 208972.07
+    },
+    {
+      "group_id": "thwaites",
+      "group_name_en": "Thwaites",
+      "group_name_zh": "思韦茨冰川",
+      "region": "west",
+      "anchor_basin_id": 170,
+      "anchor_basin_name": "Thwaites",
+      "anchor_label_xy_m": [
+        -1261091,
+        -378731
+      ],
+      "anchor_lonlat": [
+        -73.2839,
+        -77.9243
+      ],
+      "member_basins": [
+        "Haynes",
+        "Pope",
+        "Smith",
+        "Thwaites"
+      ],
+      "total_area_km2": 208623.68
+    },
+    {
+      "group_id": "shirase-glacier",
+      "group_name_en": "Shirase Glacier",
+      "group_name_zh": "白濑冰川",
+      "region": "east",
+      "anchor_basin_id": 157,
+      "anchor_basin_name": "Shirase Glacier",
+      "anchor_label_xy_m": [
+        1299797,
+        1373982
+      ],
+      "anchor_lonlat": [
+        136.5893,
+        -72.7193
+      ],
+      "member_basins": [
+        "Shirase Glacier"
+      ],
+      "total_area_km2": 205290.62
+    },
+    {
+      "group_id": "whillans",
+      "group_name_en": "Whillans",
+      "group_name_zh": "惠兰斯冰流",
+      "region": "west",
+      "anchor_basin_id": 185,
+      "anchor_basin_name": "Whillans",
+      "anchor_label_xy_m": [
+        -597386,
+        -327900
+      ],
+      "anchor_lonlat": [
+        -61.238,
+        -83.7341
+      ],
+      "member_basins": [
+        "Whillans"
+      ],
+      "total_area_km2": 193129.35
+    },
+    {
+      "group_id": "jutulstraumen",
+      "group_name_en": "Jutulstraumen",
+      "group_name_zh": "尤图尔斯特劳门冰川",
+      "region": "east",
+      "anchor_basin_id": 74,
+      "anchor_basin_name": "Jutulstraumen",
+      "anchor_label_xy_m": [
+        94733,
+        1842906
+      ],
+      "anchor_lonlat": [
+        177.0573,
+        -73.1341
+      ],
+      "member_basins": [
+        "Jutulstraumen"
+      ],
+      "total_area_km2": 188708.83
+    },
+    {
+      "group_id": "macayeal",
+      "group_name_en": "MacAyeal",
+      "group_name_zh": "麦卡耶尔冰流",
+      "region": "west",
+      "anchor_basin_id": 100,
+      "anchor_basin_name": "MacAyeal",
+      "anchor_label_xy_m": [
+        -914369,
+        -856262
+      ],
+      "anchor_lonlat": [
+        -46.8796,
+        -78.5077
+      ],
+      "member_basins": [
+        "MacAyeal"
+      ],
+      "total_area_km2": 185212.74
+    },
+    {
+      "group_id": "vincennes-bay",
+      "group_name_en": "Vincennes Bay",
+      "group_name_zh": "Vincennes Bay流域",
+      "region": "east",
+      "anchor_basin_id": 181,
+      "anchor_basin_name": "Vincennes Bay",
+      "anchor_label_xy_m": [
+        2240410,
+        -712746
+      ],
+      "anchor_lonlat": [
+        72.3525,
+        -68.6038
+      ],
+      "member_basins": [
+        "Budd Coast",
+        "Conger Glenzer",
+        "Knox Coast",
+        "Law Dome",
+        "Tracy Tremenchus",
+        "Vincennes Bay"
+      ],
+      "total_area_km2": 181929.31
+    },
+    {
+      "group_id": "ninnis",
+      "group_name_en": "Ninnis",
+      "group_name_zh": "尼尼斯冰川",
+      "region": "east",
+      "anchor_basin_id": 117,
+      "anchor_basin_name": "Ninnis",
+      "anchor_label_xy_m": [
+        1313739,
+        -1522506
+      ],
+      "anchor_lonlat": [
+        40.7902,
+        -71.6442
+      ],
+      "member_basins": [
+        "Ninnis"
+      ],
+      "total_area_km2": 178451.72
+    },
+    {
+      "group_id": "pine-island",
+      "group_name_en": "Pine Island",
+      "group_name_zh": "松岛冰川",
+      "region": "west",
+      "anchor_basin_id": 123,
+      "anchor_basin_name": "Pine Island",
+      "anchor_label_xy_m": [
+        -1558207,
+        -113219
+      ],
+      "anchor_lonlat": [
+        -85.8442,
+        -75.6928
+      ],
+      "member_basins": [
+        "Pine Island"
+      ],
+      "total_area_km2": 176482.22
+    },
+    {
+      "group_id": "rennick",
+      "group_name_en": "Rennick",
+      "group_name_zh": "Rennick流域",
+      "region": "east",
+      "anchor_basin_id": 141,
+      "anchor_basin_name": "Rennick",
+      "anchor_label_xy_m": [
+        630029,
+        -1854260
+      ],
+      "anchor_lonlat": [
+        18.7664,
+        -72.1166
+      ],
+      "member_basins": [
+        "Aviator",
+        "Campbell-Tinker",
+        "Icebreaker-Fitzgerald",
+        "Lauritzen",
+        "Lillie",
+        "Mariner",
+        "Matusevitch",
+        "Oates Coast1",
+        "Oates Coast2",
+        "Prietsley-Rieves",
+        "Rennick",
+        "Tucker",
+        "Victoria Land1",
+        "Victoria Land2",
+        "Victoria Land3"
+      ],
+      "total_area_km2": 174552.11
+    },
+    {
+      "group_id": "institute",
+      "group_name_en": "Institute",
+      "group_name_zh": "Institute流域",
+      "region": "west",
+      "anchor_basin_id": 68,
+      "anchor_basin_name": "Institute",
+      "anchor_label_xy_m": [
+        -900554,
+        35784
+      ],
+      "anchor_lonlat": [
+        -92.2755,
+        -81.7189
+      ],
+      "member_basins": [
+        "Hercules",
+        "Institute",
+        "Union"
+      ],
+      "total_area_km2": 170595.96
+    },
+    {
+      "group_id": "borchgrevink",
+      "group_name_en": "Borchgrevink",
+      "group_name_zh": "Borchgrevink流域",
+      "region": "east",
+      "anchor_basin_id": 15,
+      "anchor_basin_name": "Borchgrevink",
+      "anchor_label_xy_m": [
+        613686,
+        1728933
+      ],
+      "anchor_lonlat": [
+        160.4576,
+        -73.2307
+      ],
+      "member_basins": [
+        "Borchgrevink"
+      ],
+      "total_area_km2": 170389.54
+    },
+    {
+      "group_id": "evans",
+      "group_name_en": "Evans",
+      "group_name_zh": "Evans流域",
+      "region": "peninsula",
+      "anchor_basin_id": 45,
+      "anchor_basin_name": "Evans",
+      "anchor_label_xy_m": [
+        -1555405,
+        215165
+      ],
+      "anchor_lonlat": [
+        -97.876,
+        -75.6212
+      ],
+      "member_basins": [
+        "Alison",
+        "Evans",
+        "Ferrigno",
+        "Fox",
+        "Rydberg Peninsula",
+        "Stange",
+        "Thomson"
+      ],
+      "total_area_km2": 160461.36
+    },
+    {
+      "group_id": "macrobertson-land",
+      "group_name_en": "MacRobertson Land",
+      "group_name_zh": "MacRobertson Land流域",
+      "region": "east",
+      "anchor_basin_id": 101,
+      "anchor_basin_name": "MacRobertson Land",
+      "anchor_label_xy_m": [
+        1816719,
+        950730
+      ],
+      "anchor_lonlat": [
+        117.6241,
+        -71.2897
+      ],
+      "member_basins": [
+        "MacRobertson Land"
+      ],
+      "total_area_km2": 156738.86
+    },
+    {
+      "group_id": "kamb",
+      "group_name_en": "Kamb",
+      "group_name_zh": "Kamb流域",
+      "region": "west",
+      "anchor_basin_id": 75,
+      "anchor_basin_name": "Kamb",
+      "anchor_label_xy_m": [
+        -914535,
+        -359468
+      ],
+      "anchor_lonlat": [
+        -68.5421,
+        -80.974
+      ],
+      "member_basins": [
+        "Kamb"
+      ],
+      "total_area_km2": 155148.06
+    },
+    {
+      "group_id": "mulock",
+      "group_name_en": "Mulock",
+      "group_name_zh": "Mulock流域",
+      "region": "east",
+      "anchor_basin_id": 114,
+      "anchor_basin_name": "Mulock",
+      "anchor_label_xy_m": [
+        658584,
+        -1143615
+      ],
+      "anchor_lonlat": [
+        29.9367,
+        -77.8974
+      ],
+      "member_basins": [
+        "Mulock",
+        "Ross East4",
+        "Ross East5"
+      ],
+      "total_area_km2": 153380.61
+    },
+    {
+      "group_id": "foundation",
+      "group_name_en": "Foundation",
+      "group_name_zh": "根基冰流",
+      "region": "west",
+      "anchor_basin_id": 51,
+      "anchor_basin_name": "Foundation",
+      "anchor_label_xy_m": [
+        -421690,
+        42280
+      ],
+      "anchor_lonlat": [
+        -95.7255,
+        -86.1009
+      ],
+      "member_basins": [
+        "Foundation"
+      ],
+      "total_area_km2": 152351.42
+    },
+    {
+      "group_id": "beardmore",
+      "group_name_en": "Beardmore",
+      "group_name_zh": "Beardmore流域",
+      "region": "east",
+      "anchor_basin_id": 13,
+      "anchor_basin_name": "Beardmore",
+      "anchor_label_xy_m": [
+        142550,
+        -352089
+      ],
+      "anchor_lonlat": [
+        22.0415,
+        -86.505
+      ],
+      "member_basins": [
+        "Beardmore",
+        "Lennox-King",
+        "Ross East2",
+        "Ross East3"
+      ],
+      "total_area_km2": 150138.58
+    },
+    {
+      "group_id": "frost",
+      "group_name_en": "Frost",
+      "group_name_zh": "Frost流域",
+      "region": "east",
+      "anchor_basin_id": 53,
+      "anchor_basin_name": "Frost",
+      "anchor_label_xy_m": [
+        1727820,
+        -1430706
+      ],
+      "anchor_lonlat": [
+        50.3738,
+        -69.5643
+      ],
+      "member_basins": [
+        "Frost"
+      ],
+      "total_area_km2": 150060.01
+    },
+    {
+      "group_id": "support-force",
+      "group_name_en": "Support Force",
+      "group_name_zh": "Support Force流域",
+      "region": "west",
+      "anchor_basin_id": 168,
+      "anchor_basin_name": "Support Force",
+      "anchor_label_xy_m": [
+        -416823,
+        463423
+      ],
+      "anchor_lonlat": [
+        -138.0304,
+        -84.268
+      ],
+      "member_basins": [
+        "Support Force"
+      ],
+      "total_area_km2": 145439.95
+    },
+    {
+      "group_id": "islands",
+      "group_name_en": "Islands",
+      "group_name_zh": "Islands流域",
+      "region": "west",
+      "anchor_basin_id": 69,
+      "anchor_basin_name": "Islands",
+      "anchor_label_xy_m": [
+        -848960,
+        784219
+      ],
+      "anchor_lonlat": [
+        -132.7299,
+        -79.3922
+      ],
+      "member_basins": [
+        "Islands"
+      ],
+      "total_area_km2": 139160.18
+    },
+    {
+      "group_id": "riiser-larsen",
+      "group_name_en": "Riiser-Larsen",
+      "group_name_zh": "Riiser-Larsen流域",
+      "region": "east",
+      "anchor_basin_id": 143,
+      "anchor_basin_name": "Riiser-Larsen",
+      "anchor_label_xy_m": [
+        -308303,
+        1749208
+      ],
+      "anchor_lonlat": [
+        -170.0041,
+        -73.758
+      ],
+      "member_basins": [
+        "Atka",
+        "Ekstrom",
+        "Jelbart",
+        "Princess Martha Coast1",
+        "Princess Martha Coast2",
+        "Quar",
+        "Riiser-Larsen"
+      ],
+      "total_area_km2": 131980.17
+    },
+    {
+      "group_id": "sulzberger",
+      "group_name_en": "Sulzberger",
+      "group_name_zh": "Sulzberger流域",
+      "region": "west",
+      "anchor_basin_id": 167,
+      "anchor_basin_name": "Sulzberger",
+      "anchor_label_xy_m": [
+        -846611,
+        -1106803
+      ],
+      "anchor_lonlat": [
+        -37.4129,
+        -77.226
+      ],
+      "member_basins": [
+        "Butler-Swinburne",
+        "Echelmeyer",
+        "Frostman-Lord-Shuman-Anandakri",
+        "Hamilton",
+        "Hull",
+        "Land",
+        "Nickerson",
+        "Prestud",
+        "Richter",
+        "Ruppert Coast2",
+        "Saunders Coast",
+        "Shirases Coast1",
+        "Shirases Coast2",
+        "Sulzberger",
+        "Withrow"
+      ],
+      "total_area_km2": 123772.27
+    },
+    {
+      "group_id": "bindschadler",
+      "group_name_en": "Bindschadler",
+      "group_name_zh": "宾沙德勒冰流",
+      "region": "west",
+      "anchor_basin_id": 14,
+      "anchor_basin_name": "Bindschadler",
+      "anchor_label_xy_m": [
+        -991129,
+        -554421
+      ],
+      "anchor_lonlat": [
+        -60.7781,
+        -79.5755
+      ],
+      "member_basins": [
+        "Bindschadler"
+      ],
+      "total_area_km2": 122051.12
+    },
+    {
+      "group_id": "brunt-stancomb",
+      "group_name_en": "Brunt Stancomb",
+      "group_name_zh": "Brunt Stancomb流域",
+      "region": "west",
+      "anchor_basin_id": 18,
+      "anchor_basin_name": "Brunt Stancomb",
+      "anchor_label_xy_m": [
+        -393143,
+        1456161
+      ],
+      "anchor_lonlat": [
+        -164.8912,
+        -76.1828
+      ],
+      "member_basins": [
+        "Brunt Stancomb"
+      ],
+      "total_area_km2": 120958.49
+    },
+    {
+      "group_id": "rayner-thyer",
+      "group_name_en": "Rayner Thyer",
+      "group_name_zh": "Rayner Thyer流域",
+      "region": "east",
+      "anchor_basin_id": 139,
+      "anchor_basin_name": "Rayner Thyer",
+      "anchor_label_xy_m": [
+        1704600,
+        1398625
+      ],
+      "anchor_lonlat": [
+        129.3689,
+        -69.9066
+      ],
+      "member_basins": [
+        "Rayner Thyer"
+      ],
+      "total_area_km2": 119287.08
+    },
+    {
+      "group_id": "mawson-coast",
+      "group_name_en": "Mawson Coast",
+      "group_name_zh": "Mawson Coast流域",
+      "region": "east",
+      "anchor_basin_id": 105,
+      "anchor_basin_name": "Mawson Coast",
+      "anchor_label_xy_m": [
+        2049656,
+        1116342
+      ],
+      "anchor_lonlat": [
+        118.5749,
+        -68.7561
+      ],
+      "member_basins": [
+        "Mawson Coast"
+      ],
+      "total_area_km2": 111497.19
+    },
+    {
+      "group_id": "prince-olav-coast",
+      "group_name_en": "Prince Olav Coast",
+      "group_name_zh": "Prince Olav Coast流域",
+      "region": "east",
+      "anchor_basin_id": 130,
+      "anchor_basin_name": "Prince Olav Coast",
+      "anchor_label_xy_m": [
+        1571114,
+        1648113
+      ],
+      "anchor_lonlat": [
+        136.3702,
+        -69.2636
+      ],
+      "member_basins": [
+        "Prince Harald",
+        "Prince Harald Coast1",
+        "Prince Harald Coast2",
+        "Prince Olav Coast"
+      ],
+      "total_area_km2": 106067.67
+    },
+    {
+      "group_id": "larsend",
+      "group_name_en": "LarsenD",
+      "group_name_zh": "LarsenD流域",
+      "region": "west",
+      "anchor_basin_id": 83,
+      "anchor_basin_name": "LarsenD",
+      "anchor_label_xy_m": [
+        -1938565,
+        966227
+      ],
+      "anchor_lonlat": [
+        -116.4928,
+        -70.2546
+      ],
+      "member_basins": [
+        "Airy Rotz Seller",
+        "Cape Jeremy",
+        "Fleming",
+        "Harriott",
+        "Harriott Headland",
+        "LarsenC",
+        "LarsenD",
+        "Prospect",
+        "Wilkins",
+        "Wilkins George VI",
+        "Wilkins Island4",
+        "Zonda Eureka"
+      ],
+      "total_area_km2": 105547.78
+    },
+    {
+      "group_id": "fisher",
+      "group_name_en": "Fisher",
+      "group_name_zh": "Fisher流域",
+      "region": "east",
+      "anchor_basin_id": 48,
+      "anchor_basin_name": "Fisher",
+      "anchor_label_xy_m": [
+        1522448,
+        1010439
+      ],
+      "anchor_lonlat": [
+        123.572,
+        -73.2972
+      ],
+      "member_basins": [
+        "Fisher"
+      ],
+      "total_area_km2": 103310
+    },
+    {
+      "group_id": "getz",
+      "group_name_en": "Getz",
+      "group_name_zh": "格茨冰架",
+      "region": "west",
+      "anchor_basin_id": 56,
+      "anchor_basin_name": "Getz",
+      "anchor_label_xy_m": [
+        -1259755,
+        -942668
+      ],
+      "anchor_lonlat": [
+        -53.1927,
+        -75.5922
+      ],
+      "member_basins": [
+        "Getz",
+        "Jackson-Perkins",
+        "Kohler",
+        "Philbin"
+      ],
+      "total_area_km2": 102570.86
+    },
+    {
+      "group_id": "george-vi",
+      "group_name_en": "George VI",
+      "group_name_zh": "乔治六世冰架",
+      "region": "peninsula",
+      "anchor_basin_id": 55,
+      "anchor_basin_name": "George VI",
+      "anchor_label_xy_m": [
+        -1655985,
+        641408
+      ],
+      "anchor_lonlat": [
+        -111.1727,
+        -73.7608
+      ],
+      "member_basins": [
+        "Bach",
+        "Brahms",
+        "George VI",
+        "Mendelssohn",
+        "Verdi",
+        "Wilkins Island1",
+        "Wilkins Island2",
+        "Wilkins Island3",
+        "Wilkins Island5",
+        "Wilkins Island6"
+      ],
+      "total_area_km2": 96726.98
+    },
+    {
+      "group_id": "mertz",
+      "group_name_en": "Mertz",
+      "group_name_zh": "默茨冰川",
+      "region": "east",
+      "anchor_basin_id": 110,
+      "anchor_basin_name": "Mertz",
+      "anchor_label_xy_m": [
+        1466917,
+        -1821599
+      ],
+      "anchor_lonlat": [
+        38.8442,
+        -68.7127
+      ],
+      "member_basins": [
+        "Mertz",
+        "Wilkes Land1",
+        "Wilkes Land2"
+      ],
+      "total_area_km2": 93300.18
+    },
+    {
+      "group_id": "wilhelm-ii-coast",
+      "group_name_en": "Wilhelm II Coast",
+      "group_name_zh": "Wilhelm II Coast流域",
+      "region": "east",
+      "anchor_basin_id": 186,
+      "anchor_basin_name": "Wilhelm II Coast",
+      "anchor_label_xy_m": [
+        2381567,
+        -117577
+      ],
+      "anchor_lonlat": [
+        87.1736,
+        -68.3066
+      ],
+      "member_basins": [
+        "Wilhelm II Coast"
+      ],
+      "total_area_km2": 92477.99
+    },
+    {
+      "group_id": "rutford",
+      "group_name_en": "Rutford",
+      "group_name_zh": "拉特福德冰流",
+      "region": "west",
+      "anchor_basin_id": 150,
+      "anchor_basin_name": "Rutford",
+      "anchor_label_xy_m": [
+        -1374689,
+        57211
+      ],
+      "anchor_lonlat": [
+        -92.3831,
+        -77.386
+      ],
+      "member_basins": [
+        "Carlson",
+        "Minnesota",
+        "Rutford"
+      ],
+      "total_area_km2": 88782.04
+    },
+    {
+      "group_id": "ingrid-christensen-coast",
+      "group_name_en": "Ingrid Christensen Coast",
+      "group_name_zh": "Ingrid Christensen Coast流域",
+      "region": "east",
+      "anchor_basin_id": 67,
+      "anchor_basin_name": "Ingrid Christensen Coast",
+      "anchor_label_xy_m": [
+        2186432,
+        358330
+      ],
+      "anchor_lonlat": [
+        99.3074,
+        -69.8114
+      ],
+      "member_basins": [
+        "Ingrid Christensen Coast"
+      ],
+      "total_area_km2": 86255.35
+    },
+    {
+      "group_id": "adelie-coast",
+      "group_name_en": "Adelie Coast",
+      "group_name_zh": "Adelie Coast流域",
+      "region": "east",
+      "anchor_basin_id": 3,
+      "anchor_basin_name": "Adelie Coast",
+      "anchor_label_xy_m": [
+        1662012,
+        -1839142
+      ],
+      "anchor_lonlat": [
+        42.1038,
+        -67.4686
+      ],
+      "member_basins": [
+        "Adelie Coast"
+      ],
+      "total_area_km2": 85918.85
+    },
+    {
+      "group_id": "bailey",
+      "group_name_en": "Bailey",
+      "group_name_zh": "Bailey流域",
+      "region": "west",
+      "anchor_basin_id": 11,
+      "anchor_basin_name": "Bailey",
+      "anchor_label_xy_m": [
+        -554582,
+        1170026
+      ],
+      "anchor_lonlat": [
+        -154.6395,
+        -78.124
+      ],
+      "member_basins": [
+        "Bailey"
+      ],
+      "total_area_km2": 78073.62
+    },
+    {
+      "group_id": "mercer",
+      "group_name_en": "Mercer",
+      "group_name_zh": "Mercer流域",
+      "region": "west",
+      "anchor_basin_id": 109,
+      "anchor_basin_name": "Mercer",
+      "anchor_label_xy_m": [
+        -288019,
+        -198023
+      ],
+      "anchor_lonlat": [
+        -55.4901,
+        -86.7839
+      ],
+      "member_basins": [
+        "Mercer"
+      ],
+      "total_area_km2": 69419.89
+    },
+    {
+      "group_id": "moller",
+      "group_name_en": "Moller",
+      "group_name_zh": "Moller流域",
+      "region": "west",
+      "anchor_basin_id": 112,
+      "anchor_basin_name": "Moller",
+      "anchor_label_xy_m": [
+        -711712,
+        191696
+      ],
+      "anchor_lonlat": [
+        -105.0746,
+        -83.2238
+      ],
+      "member_basins": [
+        "Moller"
+      ],
+      "total_area_km2": 59443.66
+    },
+    {
+      "group_id": "abbot",
+      "group_name_en": "Abbot",
+      "group_name_zh": "Abbot流域",
+      "region": "peninsula",
+      "anchor_basin_id": 1,
+      "anchor_basin_name": "Abbot",
+      "anchor_label_xy_m": [
+        -1786728,
+        -112853
+      ],
+      "anchor_lonlat": [
+        -86.3859,
+        -73.6306
+      ],
+      "member_basins": [
+        "Abbot",
+        "Cooke",
+        "Cosgrove",
+        "King",
+        "Lucchitta Velasco",
+        "Venable",
+        "Walgreen Coast"
+      ],
+      "total_area_km2": 58953.32
+    },
+    {
+      "group_id": "amundsen",
+      "group_name_en": "Amundsen",
+      "group_name_zh": "Amundsen流域",
+      "region": "west",
+      "anchor_basin_id": 7,
+      "anchor_basin_name": "Amundsen",
+      "anchor_label_xy_m": [
+        -59869,
+        -335217
+      ],
+      "anchor_lonlat": [
+        -10.1261,
+        -86.8667
+      ],
+      "member_basins": [
+        "Amundsen",
+        "Bowman Strom Live Axel-Heigerg",
+        "Ross East1",
+        "Shackleton"
+      ],
+      "total_area_km2": 56786.99
+    },
+    {
+      "group_id": "enderby-land",
+      "group_name_en": "Enderby Land",
+      "group_name_zh": "Enderby Land流域",
+      "region": "east",
+      "anchor_basin_id": 43,
+      "anchor_basin_name": "Enderby Land",
+      "anchor_label_xy_m": [
+        2013261,
+        1542356
+      ],
+      "anchor_lonlat": [
+        127.4557,
+        -66.9611
+      ],
+      "member_basins": [
+        "Edward VIII",
+        "Enderby Land",
+        "Enderby Land2"
+      ],
+      "total_area_km2": 54607.02
+    },
+    {
+      "group_id": "wilmarobertdowner",
+      "group_name_en": "WilmaRobertDowner",
+      "group_name_zh": "WilmaRobertDowner流域",
+      "region": "east",
+      "anchor_basin_id": 197,
+      "anchor_basin_name": "WilmaRobertDowner",
+      "anchor_label_xy_m": [
+        1941103,
+        1332204
+      ],
+      "anchor_lonlat": [
+        124.4623,
+        -68.5751
+      ],
+      "member_basins": [
+        "WilmaRobertDowner"
+      ],
+      "total_area_km2": 54256.73
+    },
+    {
+      "group_id": "dry-valleys",
+      "group_name_en": "Dry Valleys",
+      "group_name_zh": "Dry Valleys流域",
+      "region": "east",
+      "anchor_basin_id": 36,
+      "anchor_basin_name": "Dry Valleys",
+      "anchor_label_xy_m": [
+        494644,
+        -1328372
+      ],
+      "anchor_lonlat": [
+        20.4237,
+        -77.0077
+      ],
+      "member_basins": [
+        "Dry Valleys",
+        "Skelton"
+      ],
+      "total_area_km2": 52381.64
+    },
+    {
+      "group_id": "d-orville-coast",
+      "group_name_en": "D Orville Coast",
+      "group_name_zh": "D Orville Coast流域",
+      "region": "west",
+      "anchor_basin_id": 32,
+      "anchor_basin_name": "D Orville Coast",
+      "anchor_label_xy_m": [
+        -1508094,
+        699150
+      ],
+      "anchor_lonlat": [
+        -114.8724,
+        -74.7874
+      ],
+      "member_basins": [
+        "D Orville Coast",
+        "LarsenE",
+        "LarsenE Kemp Peninsula",
+        "LarsenF",
+        "LarsenF Piggot Peninsula",
+        "LarsenG",
+        "LarsenG Bowman Peninsula",
+        "LarsenG Smith Peninsula"
+      ],
+      "total_area_km2": 47167.72
+    },
+    {
+      "group_id": "holmes",
+      "group_name_en": "Holmes",
+      "group_name_zh": "Holmes流域",
+      "region": "east",
+      "anchor_basin_id": 64,
+      "anchor_basin_name": "Holmes",
+      "anchor_label_xy_m": [
+        1978091,
+        -1431513
+      ],
+      "anchor_lonlat": [
+        54.1073,
+        -67.7979
+      ],
+      "member_basins": [
+        "Holmes",
+        "Sabrina Coast1",
+        "Sabrina Coast2",
+        "Voyeykov"
+      ],
+      "total_area_km2": 43123.29
+    },
+    {
+      "group_id": "west-graham-land",
+      "group_name_en": "West Graham Land",
+      "group_name_zh": "West Graham Land流域",
+      "region": "west",
+      "anchor_basin_id": 184,
+      "anchor_basin_name": "West Graham Land",
+      "anchor_label_xy_m": [
+        -2358778,
+        1092302
+      ],
+      "anchor_lonlat": [
+        -114.8479,
+        -66.4017
+      ],
+      "member_basins": [
+        "Crane",
+        "Drygalski",
+        "Drygalskis Headland",
+        "Eastern Graham Land",
+        "Evans Headland",
+        "Flask",
+        "Hektoria Green Evans",
+        "Hektoria Headland",
+        "Jason Peninsula",
+        "Jorum",
+        "LarsenA",
+        "Leppard",
+        "Mapple",
+        "Melville",
+        "Pequod",
+        "Punchbowl",
+        "Starbuck",
+        "Stubb",
+        "West Graham Land"
+      ],
+      "total_area_km2": 42472.63
+    },
+    {
+      "group_id": "scott",
+      "group_name_en": "Scott",
+      "group_name_zh": "Scott流域",
+      "region": "west",
+      "anchor_basin_id": 155,
+      "anchor_basin_name": "Scott",
+      "anchor_label_xy_m": [
+        -152549,
+        -256075
+      ],
+      "anchor_lonlat": [
+        -30.7831,
+        -87.2572
+      ],
+      "member_basins": [
+        "Leverett",
+        "Scott"
+      ],
+      "total_area_km2": 39524.29
+    },
+    {
+      "group_id": "vigrid",
+      "group_name_en": "Vigrid",
+      "group_name_zh": "Vigrid流域",
+      "region": "east",
+      "anchor_basin_id": 180,
+      "anchor_basin_name": "Vigrid",
+      "anchor_label_xy_m": [
+        318403,
+        1790630
+      ],
+      "anchor_lonlat": [
+        169.9173,
+        -73.3741
+      ],
+      "member_basins": [
+        "Vigrid"
+      ],
+      "total_area_km2": 35425.35
+    },
+    {
+      "group_id": "publications",
+      "group_name_en": "Publications",
+      "group_name_zh": "Publications流域",
+      "region": "east",
+      "anchor_basin_id": 136,
+      "anchor_basin_name": "Publications",
+      "anchor_label_xy_m": [
+        2077893,
+        461297
+      ],
+      "anchor_lonlat": [
+        102.5168,
+        -70.5905
+      ],
+      "member_basins": [
+        "Publications"
+      ],
+      "total_area_km2": 34669.62
+    },
+    {
+      "group_id": "dibble",
+      "group_name_en": "Dibble",
+      "group_name_zh": "Dibble流域",
+      "region": "east",
+      "anchor_basin_id": 35,
+      "anchor_basin_name": "Dibble",
+      "anchor_label_xy_m": [
+        1772041,
+        -1728452
+      ],
+      "anchor_lonlat": [
+        45.7134,
+        -67.4992
+      ],
+      "member_basins": [
+        "Dibble"
+      ],
+      "total_area_km2": 32865.93
+    },
+    {
+      "group_id": "lazarev",
+      "group_name_en": "Lazarev",
+      "group_name_zh": "Lazarev流域",
+      "region": "east",
+      "anchor_basin_id": 93,
+      "anchor_basin_name": "Lazarev",
+      "anchor_label_xy_m": [
+        497035,
+        1962592
+      ],
+      "anchor_lonlat": [
+        165.7884,
+        -71.5221
+      ],
+      "member_basins": [
+        "Lazarev"
+      ],
+      "total_area_km2": 32522.17
+    },
+    {
+      "group_id": "nivl",
+      "group_name_en": "Nivl",
+      "group_name_zh": "Nivl流域",
+      "region": "east",
+      "anchor_basin_id": 118,
+      "anchor_basin_name": "Nivl",
+      "anchor_label_xy_m": [
+        409863,
+        2022991
+      ],
+      "anchor_lonlat": [
+        168.5468,
+        -71.1673
+      ],
+      "member_basins": [
+        "Nivl",
+        "Princess Astrid Coast1",
+        "Princess Astrid Coast2"
+      ],
+      "total_area_km2": 27632.5
+    },
+    {
+      "group_id": "coats-coast",
+      "group_name_en": "Coats Coast",
+      "group_name_zh": "Coats Coast流域",
+      "region": "west",
+      "anchor_basin_id": 26,
+      "anchor_basin_name": "Coats Coast",
+      "anchor_label_xy_m": [
+        -682552,
+        1246720
+      ],
+      "anchor_lonlat": [
+        -151.3003,
+        -76.9727
+      ],
+      "member_basins": [
+        "Coats Coast"
+      ],
+      "total_area_km2": 25952.05
+    },
+    {
+      "group_id": "clarie-coast",
+      "group_name_en": "Clarie Coast",
+      "group_name_zh": "Clarie Coast流域",
+      "region": "east",
+      "anchor_basin_id": 25,
+      "anchor_basin_name": "Clarie Coast",
+      "anchor_label_xy_m": [
+        1910741,
+        -1687637
+      ],
+      "anchor_lonlat": [
+        48.5479,
+        -66.8446
+      ],
+      "member_basins": [
+        "Clarie Coast"
+      ],
+      "total_area_km2": 25796.47
+    }
+  ]
+}

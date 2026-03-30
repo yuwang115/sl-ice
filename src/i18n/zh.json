@@ -1,0 +1,32 @@
+{
+  "title": "SL-ICE",
+  "subtitle": "\u6d41\u7ebf\u4ea4\u4e92\u5f0f\u51b0\u51bb\u5708\u63a2\u7d22\u5668",
+  "sandbox": "\u6c99\u76d2\u6a21\u5f0f",
+  "challenges": "\u6311\u6218\u5173\u5361",
+  "realWorld": "\u771f\u5b9e\u4e16\u754c",
+  "controls": "\u63a7\u5236\u9762\u677f",
+  "atmosphere": "\u5927\u6c14\u6e29\u5ea6 \u0394T",
+  "ocean": "\u6d77\u6d0b\u6e29\u5ea6 \u0394T",
+  "snowfall": "\u964d\u96ea\u500d\u7387",
+  "drainage": "\u6392\u6c34\u6548\u7387",
+  "hydrology": "\u51b0\u4e0b\u6c34\u6587",
+  "year": "\u5e74\u4efd",
+  "volume": "\u51b0\u91cf",
+  "seaLevel": "\u6d77\u5e73\u9762",
+  "glPosition": "\u63a5\u5730\u7ebf\u4f4d\u7f6e",
+  "glVelocity": "GL\u901f\u5ea6",
+  "play": "\u64ad\u653e",
+  "pause": "\u6682\u505c",
+  "reset": "\u91cd\u7f6e",
+  "back": "\u8fd4\u56de\u83dc\u5355",
+  "share": "\u5206\u4eab",
+  "tryAgain": "\u518d\u8bd5\u4e00\u6b21",
+  "learnMore": "\u4e86\u89e3\u66f4\u591a",
+  "cities": {
+    "0.5": "\u4f4e\u6d3c\u5c9b\u5c7f\u53d7\u5230\u5a01\u80c1",
+    "1.0": "\u4e0a\u6d77\u3001\u8fc8\u963f\u5bc6\u9762\u4e34\u4e25\u91cd\u6d2a\u6c34",
+    "2.0": "\u4e1c\u4eac\u3001\u7ebd\u7ea6\u9762\u4e34\u98ce\u9669",
+    "3.0": "\u5168\u7403\u4e3b\u8981\u6cbf\u6d77\u57ce\u5e02\u53d7\u5f71\u54cd",
+    "5.0": "\u707e\u96be\u6027\u7684\u5168\u7403\u6cbf\u6d77\u6d2a\u6c34"
+  }
+}

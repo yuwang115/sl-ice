@@ -1,0 +1,45 @@
+{
+  "name": "Wilkes Subglacial Basin",
+  "description_en": "East Antarctica's largest marine-based ice sheet sector. A deep overdeepening sits behind a narrow coastal ridge — if the grounding line retreats past the ridge, MISI could unlock 3–4 m of sea level rise.",
+  "description_zh": "东南极最大的海洋性冰盖扇区。沿海窄脊后方是深层过深地形——一旦接地线退过该脊，MISI可能释放3–4米海平面上升。",
+  "domain_length": 1200,
+  "T_atm_base": -25,
+  "T_ocean_base": -1.2,
+  "P_snow_base": 0.15,
+  "enable_hydrology": false,
+  "bedrock": [
+    200, 180, 150, 120, 80, 40, 0, -50, -120, -200,
+    -300, -420, -550, -680, -800, -900, -950, -980, -1000, -1010,
+    -1020, -1030, -1050, -1080, -1100, -1080, -1040, -980, -900, -800,
+    -700, -620, -560, -520, -500, -520, -560, -620, -700, -780,
+    -840, -880, -900, -910, -920, -930, -940, -950, -960, -970,
+    -980, -990, -1000, -1010, -1020, -1030, -1040, -1050, -1060, -1070,
+    -1080, -1090, -1100, -1110, -1120, -1130, -1140, -1150, -1160, -1170,
+    -1180, -1190, -1200, -1210, -1220, -1230, -1240, -1250, -1260, -1270
+  ],
+  "initial_H": [
+    3200, 3180, 3150, 3120, 3080, 3030, 2970, 2900, 2820, 2730,
+    2630, 2520, 2400, 2270, 2130, 1980, 1830, 1680, 1530, 1390,
+    1260, 1140, 1030, 930, 840, 760, 690, 630, 580, 540,
+    510, 490, 470, 460, 450, 440, 420, 400, 370, 340,
+    300, 260, 220, 180, 140, 100, 60, 30, 10, 0
+  ],
+  "sea_level_potential": 3.8,
+  "region_info": {
+    "name_en": "Wilkes Subglacial Basin",
+    "name_zh": "威尔克斯冰下盆地",
+    "location": "East Antarctica",
+    "sea_level_m": 3.8,
+    "current_retreat_m_yr": 150,
+    "key_facts_en": [
+      "Contains enough ice to raise sea level by ~3.8 meters",
+      "Protected by a narrow coastal ridge — once breached, retreat accelerates",
+      "Recent observations show warm water intruding beneath the ice"
+    ],
+    "key_facts_zh": [
+      "含有约3.8米海平面当量的冰",
+      "受沿海窄脊保护——一旦突破，退缩加速",
+      "近期观测显示暖水正在冰下入侵"
+    ]
+  }
+}
