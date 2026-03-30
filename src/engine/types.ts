@@ -44,7 +44,7 @@ export interface PhysicsStatePayload {
   mass_change_gt: number;    // Total ice mass change relative to initial state (Gt)
   sea_level: number;         // Sea level equivalent change (m)
   shelf_exists: boolean;     // Whether an ice shelf exists
-  water_pressure: Float64Array; // Subglacial water pressure profile
+  water_pressure: Float64Array; // Normalized subglacial water saturation profile
   is_misi_active: boolean;   // Whether MISI is currently active
   events: GameEvent[];       // Triggered game events
   smb: Float64Array;         // Surface mass balance profile (m/yr)
@@ -156,6 +156,7 @@ export interface ModelState {
 
   // Ice volume tracking
   initial_volume: number;    // km³
+  initial_volume_above_flotation: number; // km³
   volume: number;            // km³
   sea_level: number;         // m SLE
 

@@ -3,18 +3,28 @@
  * Manages data loading via a custom hook that orchestrates fetch → worker → store.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
 import { useExplorerStore } from '../../store/explorer-store';
 import { useUIStore } from '../../store/ui-store';
 import { loadGmtReliefColormap } from '../../lib/terrain/colormap-loader';
-import { SCENE_BACKGROUND, FOG_NEAR, FOG_FAR } from '../../lib/terrain/constants';
+import {
+  AUTO_ROTATE_IDLE_RESUME_MS,
+  DEFAULT_AUTO_ROTATE_SPEED,
+  DEFAULT_CAMERA_POSITION,
+  DEFAULT_CAMERA_TARGET,
+  FOG_FAR,
+  FOG_NEAR,
+  SCENE_BACKGROUND,
+} from '../../lib/terrain/constants';
 
 import BedrockMesh from './BedrockMesh';
 import IceSurfaceMesh from './IceSurfaceMesh';
+import IceSideMesh from './IceSideMesh';
 import IceBottomMesh from './IceBottomMesh';
 import VelocityOverlay from './VelocityOverlay';
 import CatalogFlowlines from './CatalogFlowlines';
@@ -34,6 +44,7 @@ function useTerrainLoader() {
   const setSurfaceHeights = useExplorerStore((s) => s.setSurfaceHeights);
   const setBedArrays = useExplorerStore((s) => s.setBedArrays);
   const setIceArrays = useExplorerStore((s) => s.setIceArrays);
+  const setIceSideArrays = useExplorerStore((s) => s.setIceSideArrays);
   const setIceBottomArrays = useExplorerStore((s) => s.setIceBottomArrays);
   const setVelocityArrays = useExplorerStore((s) => s.setVelocityArrays);
   const setBedColorTable = useExplorerStore((s) => s.setBedColorTable);
@@ -97,6 +108,7 @@ function useTerrainLoader() {
             setSurfaceHeights(data.surface, data.nx, data.ny);
             setBedArrays(data.bed);
             setIceArrays(data.ice);
+            setIceSideArrays(data.iceSide);
             setIceBottomArrays(data.iceBottom);
             setVelocityArrays(data.velocity);
             setLoadingStage('ready', 1.0, 'Complete');
@@ -130,7 +142,7 @@ function useTerrainLoader() {
   }, [
     loadingStage,
     setLoadingStage, setError, setScaleFactors, setSurfaceHeights,
-    setBedArrays, setIceArrays, setIceBottomArrays, setVelocityArrays, setBedColorTable,
+    setBedArrays, setIceArrays, setIceSideArrays, setIceBottomArrays, setVelocityArrays, setBedColorTable,
   ]);
 }
 
@@ -138,7 +150,6 @@ function useTerrainLoader() {
 
 function SceneContent() {
   const exaggeration = useExplorerStore((s) => s.exaggeration);
-  const isTransitioning = useExplorerStore((s) => s.isTransitioning);
 
   return (
     <>
@@ -152,21 +163,91 @@ function SceneContent() {
       <group scale={[1, exaggeration, 1]}>
         <BedrockMesh />
         <IceSurfaceMesh />
+        <IceSideMesh />
         <IceBottomMesh />
         <VelocityOverlay />
       </group>
 
       <CameraAnimator />
-
-      <OrbitControls
-        enabled={!isTransitioning}
-        enableDamping
-        dampingFactor={0.08}
-        minDistance={0.5}
-        maxDistance={360}
-        zoomSpeed={0.8}
-      />
+      <ExplorerOrbitControls />
     </>
+  );
+}
+
+function ExplorerOrbitControls() {
+  const isTransitioning = useExplorerStore((s) => s.isTransitioning);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
+  const resumeTimerRef = useRef<number | null>(null);
+  const [autoRotate, setAutoRotate] = useState(true);
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    controls.target.set(...DEFAULT_CAMERA_TARGET);
+    controls.update();
+  }, []);
+
+  const clearResumeTimer = useCallback(() => {
+    if (resumeTimerRef.current !== null) {
+      window.clearTimeout(resumeTimerRef.current);
+      resumeTimerRef.current = null;
+    }
+  }, []);
+
+  const pauseAutoRotate = useCallback(() => {
+    clearResumeTimer();
+    setAutoRotate(false);
+  }, [clearResumeTimer]);
+
+  const scheduleAutoRotateResume = useCallback(() => {
+    clearResumeTimer();
+    resumeTimerRef.current = window.setTimeout(() => {
+      setAutoRotate(true);
+    }, AUTO_ROTATE_IDLE_RESUME_MS);
+  }, [clearResumeTimer]);
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    const dom = controls?.domElement;
+    if (!dom) return;
+
+    const handlePointerDown = () => pauseAutoRotate();
+    const handlePointerUp = () => scheduleAutoRotateResume();
+    const handleWheel = () => {
+      pauseAutoRotate();
+      scheduleAutoRotateResume();
+    };
+
+    dom.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('pointerup', handlePointerUp);
+    dom.addEventListener('wheel', handleWheel, { passive: true });
+
+    return () => {
+      clearResumeTimer();
+      dom.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('pointerup', handlePointerUp);
+      dom.removeEventListener('wheel', handleWheel);
+    };
+  }, [clearResumeTimer, pauseAutoRotate, scheduleAutoRotateResume]);
+
+  useEffect(() => {
+    if (isTransitioning) {
+      clearResumeTimer();
+    }
+  }, [clearResumeTimer, isTransitioning]);
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      enabled={!isTransitioning}
+      enableDamping
+      dampingFactor={0.08}
+      minDistance={0.2}
+      maxDistance={360}
+      zoomSpeed={0.8}
+      autoRotate={autoRotate && !isTransitioning}
+      autoRotateSpeed={DEFAULT_AUTO_ROTATE_SPEED}
+    />
   );
 }
 
@@ -187,7 +268,8 @@ export default function AntarcticaScene({ catalog, onSimulate }: AntarcticaScene
   return (
     <div className="relative w-full h-full">
       <Canvas
-        camera={{ fov: 45, near: 0.1, far: 200, position: [0, 60, 80] }}
+        camera={{ fov: 45, near: 0.1, far: 200, position: [...DEFAULT_CAMERA_POSITION] }}
+        dpr={[1, 2]}
         gl={{
           antialias: true,
           alpha: false,

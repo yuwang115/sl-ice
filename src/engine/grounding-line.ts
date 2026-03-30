@@ -12,7 +12,7 @@
  * 4. Sub-element friction parameterization near the GL
  */
 
-import { RHO_ICE, RHO_WATER, G } from './constants';
+import { RHO_ICE, RHO_WATER } from './constants';
 import type { ModelGrid } from './types';
 
 /**
@@ -91,13 +91,14 @@ export function updateGroundingLine(
 
 /**
  * Compute sub-element grounding line friction factor.
- * For the grid cell containing the GL, friction is scaled by the
- * grounded fraction λ.
+ * For the last grounded node, friction is scaled by the grounded
+ * fraction λ of the partially grounded grid cell.
  *
  * @param i Grid index
  * @param gl_index Grounding line node index
  * @param gl_position Interpolated GL position (m)
  * @param dx Grid spacing (m)
+ * @param is_floating Floating mask for detecting whether a partial cell exists
  * @returns Friction factor (0 = floating, 1 = fully grounded)
  */
 export function subElementFriction(
@@ -105,16 +106,17 @@ export function subElementFriction(
   gl_index: number,
   gl_position: number,
   dx: number,
+  is_floating: Uint8Array,
 ): number {
   if (i < gl_index) return 1.0;      // Fully grounded
-  if (i > gl_index + 1) return 0.0;  // Fully floating
+  if (i > gl_index) return 0.0;      // Fully floating
 
-  if (i === gl_index) {
-    // Cell just upstream of GL: mostly grounded
+  if (gl_index >= is_floating.length - 1 || !is_floating[gl_index + 1]) {
+    // No floating node downstream → no partial GL cell on the grid.
     return 1.0;
   }
 
-  // i === gl_index + 1: partially grounded cell
+  // i === gl_index: scale basal traction by the grounded fraction.
   const cellStart = gl_index * dx;
   const lambda = (gl_position - cellStart) / dx;
   return Math.max(0, Math.min(1, lambda));
@@ -179,106 +181,6 @@ export function computeIceBase(
   }
 
   return ice_base;
-}
-
-/**
- * Grounding line flux parameterization.
- *
- * Modifies the depth-averaged velocity near the GL to ensure proper
- * flux divergence for GL migration. Two physical mechanisms:
- *
- * 1. Driving stress velocity: τ_d = ρ_i*g*H*|ds/dx| → u ∝ τ_d^n * H
- * 2. Buttressing: reduced ice shelf → less back-stress → faster GL flow
- *
- * Following the reference marine-ice-sheet-flowline approach with a
- * float-boost factor for floating ice acceleration.
- */
-export function applySchoofFlux(
-  u_avg: Float64Array,
-  H: Float64Array,
-  b: Float64Array,
-  s: Float64Array,
-  is_floating: Uint8Array,
-  gl_index: number,
-  grid: ModelGrid,
-): void {
-  const { nx, dx } = grid;
-
-  if (gl_index < 1 || gl_index >= nx - 1) return;
-
-  const H_gl = H[gl_index];
-  if (H_gl < 50) return;
-
-  // ── 1. Driving stress at GL ──
-  const dsdx = Math.abs((s[gl_index] - s[gl_index - 1]) / dx);
-  const tauD = RHO_ICE * G * H_gl * dsdx; // Pa
-
-  // ── 2. Driving-stress velocity (SSA-like, tuned for real-time) ──
-  // Deformation: u_d ∝ A * τ^n * H
-  // Using calibrated coefficient matching reference model
-  const tauNorm = tauD / 1e5; // Normalize to ~100 kPa
-  const u_deform = 8.0 * Math.pow(tauNorm, 3) * H_gl; // m/yr
-
-  // Sliding: u_s ∝ τ² (power-law sliding)
-  const u_slide = 100.0 * Math.pow(tauNorm, 2); // m/yr
-
-  let u_gl = u_deform + u_slide;
-
-  // ── 3. Buttressing ──
-  // Measure remaining shelf thickness relative to a "full" shelf
-  let shelfVolume = 0;
-  let shelfCount = 0;
-  for (let i = gl_index + 1; i < nx; i++) {
-    if (is_floating[i] && H[i] > 10) {
-      shelfVolume += H[i];
-      shelfCount++;
-    }
-  }
-  // buttressing: 1.0 = full shelf, 0.0 = no shelf
-  const refThickness = 300; // m, reference shelf thickness for full buttressing
-  const buttressing = shelfCount > 0
-    ? Math.min(1.0, shelfVolume / (shelfCount * refThickness))
-    : 0;
-  // Less buttressing → up to 3× velocity increase
-  const buttressingBoost = 1.0 + 2.0 * Math.pow(1 - buttressing, 1.5);
-  u_gl *= buttressingBoost;
-
-  // ── 4. Water depth factor ──
-  const waterDepth = Math.max(0, -b[gl_index]);
-  const depthBoost = 1.0 + 0.5 * Math.min(waterDepth / 600, 2.0);
-  u_gl *= depthBoost;
-
-  // ── 5. Apply minimum GL velocity ──
-  // Ensure a minimum outflow at the GL (even with full buttressing)
-  u_gl = Math.max(u_gl, 100); // At least 100 m/yr
-  u_gl = Math.min(u_gl, 5000); // Cap for stability
-
-  if (u_avg[gl_index] < u_gl) {
-    u_avg[gl_index] = u_gl;
-  }
-
-  // ── 6. Smooth velocity transition ──
-  // Upstream of GL: gradual ramp
-  for (let di = 1; di <= 3; di++) {
-    const iUp = gl_index - di;
-    if (iUp < 1 || is_floating[iUp]) continue;
-    const w = 1 - di / 4;
-    const target = u_avg[gl_index] * w + u_avg[iUp] * (1 - w);
-    if (u_avg[iUp] < target) {
-      u_avg[iUp] = target;
-    }
-  }
-
-  // Downstream of GL: floating ice accelerates (float boost)
-  for (let di = 1; di <= 5; di++) {
-    const iDown = gl_index + di;
-    if (iDown >= nx || !is_floating[iDown] || H[iDown] < 10) break;
-    const boost = 1.0 + 0.45 * (1 - di / 6); // Up to 45% faster
-    const target = u_avg[gl_index] * boost;
-    if (u_avg[iDown] < target) {
-      u_avg[iDown] = target;
-    }
-  }
 }
 
 /**

@@ -44,6 +44,7 @@ export interface ExplorerStore {
   // Pre-built geometry arrays
   bedArrays: MeshArrays | null;
   iceArrays: MeshArrays | null;
+  iceSideArrays: MeshArrays | null;
   iceBottomArrays: MeshArrays | null;
   velocityArrays: MeshArrays | null;
 
@@ -79,6 +80,7 @@ export interface ExplorerStore {
   setSurfaceHeights: (data: Float32Array, nx: number, ny: number) => void;
   setBedArrays: (arrays: MeshArrays) => void;
   setIceArrays: (arrays: MeshArrays) => void;
+  setIceSideArrays: (arrays: MeshArrays) => void;
   setIceBottomArrays: (arrays: MeshArrays) => void;
   setVelocityArrays: (arrays: MeshArrays) => void;
   setBedColorTable: (table: { ocean: RGB[]; land: RGB[] }) => void;
@@ -115,6 +117,7 @@ const initialState = {
 
   bedArrays: null as MeshArrays | null,
   iceArrays: null as MeshArrays | null,
+  iceSideArrays: null as MeshArrays | null,
   iceBottomArrays: null as MeshArrays | null,
   velocityArrays: null as MeshArrays | null,
   bedColorTable: null as { ocean: RGB[]; land: RGB[] } | null,
@@ -168,6 +171,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
 
   setBedArrays: (arrays) => set({ bedArrays: arrays }),
   setIceArrays: (arrays) => set({ iceArrays: arrays }),
+  setIceSideArrays: (arrays) => set({ iceSideArrays: arrays }),
   setIceBottomArrays: (arrays) => set({ iceBottomArrays: arrays }),
   setVelocityArrays: (arrays) => set({ velocityArrays: arrays }),
   setBedColorTable: (table) => set({ bedColorTable: table }),

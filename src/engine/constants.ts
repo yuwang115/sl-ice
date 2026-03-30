@@ -104,8 +104,11 @@ export const K_WATER = 0.9;
 /** Default drainage timescale (yr) */
 export const TAU_DRAIN_DEFAULT = 1.0;
 
-/** Hydraulic conductivity (m²/yr) */
+/** Effective diffusivity for subglacial water saturation (m²/yr) */
 export const K_HYDRAULIC = 1e4;
+
+/** Characteristic basal water-layer thickness used to normalize W (m) */
+export const WATER_LAYER_THICKNESS_SCALE = 0.1;
 
 /** Latent heat of fusion (J/kg) */
 export const L_FUSION = 3.34e5;

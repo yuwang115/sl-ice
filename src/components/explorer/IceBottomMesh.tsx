@@ -6,6 +6,7 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
 import { useExplorerStore } from '../../store/explorer-store';
+import { ICE_BOTTOM_RENDER_ORDER } from '../../lib/terrain/constants';
 
 export default function IceBottomMesh() {
   const iceBottomArrays = useExplorerStore((s) => s.iceBottomArrays);
@@ -29,7 +30,7 @@ export default function IceBottomMesh() {
   const bottomOpacity = Math.max(0.12, iceOpacity * 0.82);
 
   return (
-    <mesh geometry={geometry} renderOrder={11}>
+    <mesh geometry={geometry} renderOrder={ICE_BOTTOM_RENDER_ORDER}>
       <meshStandardMaterial
         vertexColors
         transparent

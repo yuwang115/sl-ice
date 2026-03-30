@@ -28,7 +28,7 @@ export default function BedrockMesh() {
         vertexColors
         roughness={0.92}
         metalness={0.02}
-        side={THREE.DoubleSide}
+        flatShading={false}
       />
     </mesh>
   );

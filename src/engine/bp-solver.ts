@@ -93,7 +93,7 @@ export function solveBP(
 
         // ── Basal BC (j = 0): sliding law or free slip ──
         if (j === 0) {
-          const frictionFactor = subElementFriction(i, gl_index, gl_position, dx);
+          const frictionFactor = subElementFriction(i, gl_index, gl_position, dx, is_floating);
 
           if (frictionFactor < 1e-6 || is_floating[i]) {
             // Free slip (floating or no friction): du/dσ = 0

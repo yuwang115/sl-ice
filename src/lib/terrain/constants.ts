@@ -54,6 +54,13 @@ export const GMT_RELIEF_LAND_ZERO: readonly [number, number, number]  = [0.28490
 export const SCENE_BACKGROUND = 0x0a2b43;
 export const FOG_NEAR = 80;
 export const FOG_FAR = 240;
+export const DEFAULT_CAMERA_POSITION = [3, 53, 77] as const;
+export const DEFAULT_CAMERA_TARGET = [3.5, -7, 3] as const;
+export const DEFAULT_AUTO_ROTATE_SPEED = 0.53;
+export const AUTO_ROTATE_IDLE_RESUME_MS = 800;
+export const ICE_SURFACE_RENDER_ORDER = 10;
+export const ICE_SIDE_RENDER_ORDER = 10.5;
+export const ICE_BOTTOM_RENDER_ORDER = 11;
 
 // ── WGS-84 ellipsoid (for EPSG:3031 projection) ────────────────────
 export const WGS84_A = 6_378_137.0;            // semi-major axis (m)

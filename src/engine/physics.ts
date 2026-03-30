@@ -21,9 +21,10 @@ import { computeOceanMelt } from './ocean-melt';
 import { evolveThickness, applyCalving } from './ice-thickness';
 import {
   updateGroundingLine, computeSurfaceElevation, computeIceBase, computeIceVolume,
-  applySchoofFlux,
 } from './grounding-line';
-import { evolveHydrology, computeEffectivePressure } from './hydrology';
+import {
+  evolveHydrology, computeEffectivePressure, computeGroundedBasalMelt,
+} from './hydrology';
 import type {
   ModelState, ModelGrid, ScenarioConfig, UserParams,
   PhysicsStatePayload, GameEvent,
@@ -31,6 +32,25 @@ import type {
 
 const FLOWLINE_WIDTH_METERS = 1000;
 const GIGATONNES_PER_KM3_ICE = RHO_ICE * 1e-3;
+
+/**
+ * Create the computational grid.
+ */
+function createGrid(nx: number, nz: number, domainLength: number): ModelGrid {
+  const dx = (domainLength * 1000) / (nx - 1); // Convert km to m
+  const dsigma = 1.0 / (nz - 1);
+  const x = new Float64Array(nx);
+  const sigma = new Float64Array(nz);
+
+  for (let i = 0; i < nx; i++) {
+    x[i] = i * dx;
+  }
+  for (let j = 0; j < nz; j++) {
+    sigma[j] = j * dsigma;
+  }
+
+  return { nx, nz, dx, dsigma, x, sigma };
+}
 
 function interpolateAtGroundingLine(
   values: Float64Array,
@@ -54,7 +74,7 @@ function computeGroundingLineFlux(state: ModelState): number {
   const thickness = interpolateAtGroundingLine(H, gl_index, gl_position, grid.dx);
   const velocity = interpolateAtGroundingLine(u_depth_avg, gl_index, gl_position, grid.dx);
 
-  if (Number.isFinite(thickness) === false || Number.isFinite(velocity) === false || thickness <= 0) {
+  if (!Number.isFinite(thickness) || !Number.isFinite(velocity) || thickness <= 0) {
     return 0;
   }
 
@@ -65,23 +85,25 @@ function computeMassChangeGt(currentVolume: number, initialVolume: number): numb
   return (currentVolume - initialVolume) * GIGATONNES_PER_KM3_ICE;
 }
 
-/**
- * Create the computational grid.
- */
-function createGrid(nx: number, nz: number, domainLength: number): ModelGrid {
-  const dx = (domainLength * 1000) / (nx - 1); // Convert km to m
-  const dsigma = 1.0 / (nz - 1);
-  const x = new Float64Array(nx);
-  const sigma = new Float64Array(nz);
+function scenarioSeaLevelPotential(config: ScenarioConfig): number | undefined {
+  const potential = config.sea_level_potential ?? config.region_info?.sea_level_m;
+  return potential != null && potential > 0 ? potential : undefined;
+}
 
-  for (let i = 0; i < nx; i++) {
-    x[i] = i * dx;
-  }
-  for (let j = 0; j < nz; j++) {
-    sigma[j] = j * dsigma;
+function computeSeaLevelChange(
+  initialVolumeAboveFlotation: number,
+  currentVolumeAboveFlotation: number,
+  config: ScenarioConfig,
+): number {
+  const lostAboveFlotation = Math.max(0, initialVolumeAboveFlotation - currentVolumeAboveFlotation);
+  const potential = scenarioSeaLevelPotential(config);
+
+  if (potential != null && initialVolumeAboveFlotation > 0) {
+    const fractionLost = Math.min(1, lostAboveFlotation / initialVolumeAboveFlotation);
+    return potential * fractionLost;
   }
 
-  return { nx, nz, dx, dsigma, x, sigma };
+  return lostAboveFlotation * VOLUME_TO_SLE * 1e9;
 }
 
 /**
@@ -173,7 +195,7 @@ export function initializeModel(config: ScenarioConfig): ModelState {
   const basal_melt = new Float64Array(nx);
 
   // Compute initial volume
-  const { volume } = computeIceVolume(H, b, is_floating, grid.dx);
+  const { volume, volumeAboveFlotation } = computeIceVolume(H, b, is_floating, grid.dx);
 
   const state: ModelState = {
     grid,
@@ -194,6 +216,7 @@ export function initializeModel(config: ScenarioConfig): ModelState {
     misi_triggered_year: -1,
     hysteresis_locked: false,
     initial_volume: volume,
+    initial_volume_above_flotation: volumeAboveFlotation,
     volume,
     sea_level: 0,
     params,
@@ -218,25 +241,35 @@ export function stepPhysics(
   // SMB
   state.smb = computeSMB(state.s, state.params, config.T_atm_base, config.P_snow_base);
 
-  // Ocean melt (floating ice only)
-  state.basal_melt = computeOceanMelt(
-    state.H, state.b, state.is_floating, state.params,
-    config.T_ocean_base, grid.x,
+  // Effective pressure on the current geometry before updating hydrology.
+  if (!state.params.enable_hydrology) {
+    state.W.fill(0);
+  }
+  state.N_eff = computeEffectivePressure(state.H, state.W, state.is_floating);
+
+  const u_base = basalVelocity(state.u, nx, nz);
+  const groundedBasalMelt = computeGroundedBasalMelt(
+    u_base, state.H, state.N_eff, state.is_floating,
   );
 
   // Hydrology
   if (state.params.enable_hydrology) {
-    const u_base = basalVelocity(state.u, nx, nz);
     state.W = evolveHydrology(
-      state.W, state.H, state.b, state.s, u_base,
-      state.N_eff, state.is_floating, grid, state.params, dt,
+      state.W, groundedBasalMelt.waterEq, state.is_floating, grid, state.params, dt,
     );
     state.N_eff = computeEffectivePressure(state.H, state.W, state.is_floating);
   } else {
-    // Default effective pressure (no hydrology)
-    state.N_eff = computeEffectivePressure(
-      state.H, new Float64Array(nx), state.is_floating,
-    );
+    state.N_eff = computeEffectivePressure(state.H, state.W, state.is_floating);
+  }
+
+  // Total basal melt for the thickness equation:
+  // floating ice uses ocean melt, grounded ice uses geothermal + frictional melt.
+  state.basal_melt = computeOceanMelt(
+    state.H, state.b, state.is_floating, state.params,
+    config.T_ocean_base, grid.x,
+  );
+  for (let i = 0; i < nx; i++) {
+    state.basal_melt[i] += groundedBasalMelt.iceEq[i];
   }
 
   // 2. Solve BP velocity
@@ -244,13 +277,6 @@ export function stepPhysics(
 
   // Compute depth-averaged velocity
   state.u_depth_avg = depthAverageVelocity(state.u, nx, nz);
-
-  // 2b. Apply grounding line flux parameterization
-  // Ensures proper velocity at the GL for realistic GL migration
-  applySchoofFlux(
-    state.u_depth_avg, state.H, state.b, state.s, state.is_floating,
-    state.gl_index, grid,
-  );
 
   // 3. Evolve ice thickness
   const H_new = evolveThickness(
@@ -273,13 +299,17 @@ export function stepPhysics(
   state.ice_base = computeIceBase(state.H, state.b, state.is_floating);
 
   // 7. Update volume and sea level
-  const { volume } = computeIceVolume(
+  const { volume, volumeAboveFlotation } = computeIceVolume(
     state.H, state.b, state.is_floating, grid.dx,
   );
   state.volume = volume;
 
-  // Sea level: change in volume above flotation
-  state.sea_level = Math.max(0, (state.initial_volume - volume) * VOLUME_TO_SLE * 1e9);
+  // Sea level: only grounded ice above flotation contributes.
+  state.sea_level = computeSeaLevelChange(
+    state.initial_volume_above_flotation,
+    volumeAboveFlotation,
+    config,
+  );
 
   // 8. Advance time
   state.year += dt;

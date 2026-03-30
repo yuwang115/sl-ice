@@ -9,6 +9,7 @@ import { useGameStore } from '../../store/game-store';
 import { usePhysicsStore } from '../../store/physics-store';
 import { useUIStore } from '../../store/ui-store';
 import { useExplorerStore } from '../../store/explorer-store';
+import { projectFlowlinePath } from '../../lib/terrain/projection';
 import FlowlineListPanel, { type FlowlineCatalogEntry } from './FlowlineListPanel';
 import ThemeToggle from '../controls/ThemeToggle';
 import AntarcticaScene from '../explorer/AntarcticaScene';
@@ -177,6 +178,11 @@ export default function AntarcticaExplorer() {
   const transitionFlowlineId = useExplorerStore((s) => s.transitionFlowlineId);
   const isTransitioning = useExplorerStore((s) => s.isTransitioning);
   const resetExplorer = useExplorerStore((s) => s.reset);
+  const surfaceHeights = useExplorerStore((s) => s.surfaceHeights);
+  const gridNx = useExplorerStore((s) => s.gridNx);
+  const gridNy = useExplorerStore((s) => s.gridNy);
+  const horizontalMetersPerUnit = useExplorerStore((s) => s.horizontalMetersPerUnit);
+  const verticalMetersPerUnit = useExplorerStore((s) => s.verticalMetersPerUnit);
 
   const [catalog, setCatalog] = useState<FlowlineCatalogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -247,15 +253,44 @@ export default function AntarcticaExplorer() {
     }
   }, [transitionPhase, transitionFlowlineId, catalog, loadScenario, selectFlowline, setRunning]);
 
+  const getTransitionTargetPoint = useCallback(
+    (entry: FlowlineCatalogEntry): [number, number, number] | null => {
+      if (!surfaceHeights || gridNx === 0 || gridNy === 0 || entry.path_lonlat.length === 0) {
+        return null;
+      }
+
+      const projectedPoints = projectFlowlinePath(
+        entry.path_lonlat,
+        {
+          x0_m: -3_333_000,
+          y0_m: 3_333_000,
+          dx_m: 10_000,
+          dy_m: -10_000,
+          nx: gridNx,
+          ny: gridNy,
+        },
+        horizontalMetersPerUnit,
+        verticalMetersPerUnit,
+        surfaceHeights,
+        gridNx,
+        gridNy,
+      );
+
+      return projectedPoints[Math.floor(projectedPoints.length / 2)] ?? null;
+    },
+    [surfaceHeights, gridNx, gridNy, horizontalMetersPerUnit, verticalMetersPerUnit],
+  );
+
   /**
    * Trigger a transition-wrapped simulate (used by sidebar + floating button).
-   * No 3D click point → shorter transition without camera fly-in.
+   * Reuses a representative point on the flowline so buttons get the same
+   * camera-zoom transition as direct 3D activation.
    */
   const handleSimulateWithTransition = useCallback(
     (entry: FlowlineCatalogEntry) => {
-      startTransition(entry.id, null);
+      startTransition(entry.id, getTransitionTargetPoint(entry));
     },
-    [startTransition],
+    [startTransition, getTransitionTargetPoint],
   );
 
   if (loading) {

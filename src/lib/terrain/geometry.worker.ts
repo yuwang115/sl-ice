@@ -198,6 +198,139 @@ function buildSurface(
   return { positions, colors, indices: new Uint32Array(idxList) };
 }
 
+function buildIceSide(
+  nx: number, ny: number,
+  dxMeters: number, dyMeters: number,
+  hScale: number, vScale: number,
+  topHeights: Float32Array,
+  bottomHeights: Float32Array,
+  valid: Uint8Array,
+  colorFn: (h: number, extra: number, mask: number) => RGB,
+  extraField?: Float32Array,
+  mask?: Uint8Array,
+): BuildResult {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const halfX = (nx - 1) / 2;
+  const halfY = (ny - 1) / 2;
+  const absDy = Math.abs(dyMeters);
+
+  const vertexCache = new Array<
+    | {
+      top: [number, number, number];
+      bottom: [number, number, number];
+    }
+    | undefined
+  >(nx * ny);
+  const colorCache = new Array<[number, number, number] | undefined>(nx * ny);
+
+  const getVertex = (index: number) => {
+    if (vertexCache[index]) return vertexCache[index];
+    const row = Math.floor(index / nx);
+    const col = index % nx;
+    const x = ((col - halfX) * dxMeters) / hScale;
+    const z = ((row - halfY) * absDy) / hScale;
+    const topY = topHeights[index] / vScale;
+    const bottomY = bottomHeights[index] / vScale;
+    const value = {
+      top: [x, topY, z] as [number, number, number],
+      bottom: [x, bottomY, z] as [number, number, number],
+    };
+    vertexCache[index] = value;
+    return value;
+  };
+
+  const getColor = (index: number): [number, number, number] => {
+    if (colorCache[index]) return colorCache[index];
+    const rgb = colorFn(
+      topHeights[index],
+      extraField ? extraField[index] : 0,
+      mask ? mask[index] : 0,
+    );
+    const value: [number, number, number] = [
+      Math.round(rgb[0] * 255),
+      Math.round(rgb[1] * 255),
+      Math.round(rgb[2] * 255),
+    ];
+    colorCache[index] = value;
+    return value;
+  };
+
+  const pushVertex = (point: [number, number, number], color: [number, number, number]) => {
+    positions.push(point[0], point[1], point[2]);
+    colors.push(color[0], color[1], color[2]);
+    indices.push(indices.length);
+  };
+
+  const pushBoundaryQuad = (a: number, b: number) => {
+    if (
+      !Number.isFinite(topHeights[a]) ||
+      !Number.isFinite(topHeights[b]) ||
+      !Number.isFinite(bottomHeights[a]) ||
+      !Number.isFinite(bottomHeights[b])
+    ) {
+      return;
+    }
+
+    const vA = getVertex(a);
+    const vB = getVertex(b);
+    const cA = getColor(a);
+    const cB = getColor(b);
+
+    pushVertex(vA.top, cA);
+    pushVertex(vB.top, cB);
+    pushVertex(vA.bottom, cA);
+
+    pushVertex(vB.top, cB);
+    pushVertex(vB.bottom, cB);
+    pushVertex(vA.bottom, cA);
+  };
+
+  const edgeMap = new Map<string, { a: number; b: number; count: number }>();
+  const addTriangleEdge = (a: number, b: number) => {
+    const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+    const existing = edgeMap.get(key);
+    if (existing) {
+      existing.count += 1;
+      return;
+    }
+    edgeMap.set(key, { a, b, count: 1 });
+  };
+
+  for (let row = 0; row < ny - 1; row++) {
+    for (let col = 0; col < nx - 1; col++) {
+      const i0 = row * nx + col;
+      const i1 = i0 + 1;
+      const i2 = i0 + nx;
+      const i3 = i2 + 1;
+
+      if (valid[i0] && valid[i2] && valid[i1]) {
+        addTriangleEdge(i0, i2);
+        addTriangleEdge(i2, i1);
+        addTriangleEdge(i1, i0);
+      }
+      if (valid[i1] && valid[i2] && valid[i3]) {
+        addTriangleEdge(i1, i2);
+        addTriangleEdge(i2, i3);
+        addTriangleEdge(i3, i1);
+      }
+    }
+  }
+
+  edgeMap.forEach((edge) => {
+    if (edge.count === 1) {
+      pushBoundaryQuad(edge.a, edge.b);
+    }
+  });
+
+  return {
+    positions: new Float32Array(positions),
+    colors: new Uint8Array(colors),
+    indices: new Uint32Array(indices),
+  };
+}
+
 // ── Scale computation ────────────────────────────────────────────────
 
 function computeScales(nx: number, ny: number, dx: number, dy: number) {
@@ -300,6 +433,15 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
       thickness, mask,
     );
 
+    self.postMessage({ type: 'progress', stage: 'Building ice side walls...', progress: 0.65 });
+
+    const iceSideResult = buildIceSide(
+      nx, ny, dx_m, dy_m, hScale, vScale,
+      surface, iceBottomHeights, iceValid,
+      (_h, extra, m) => iceColor(extra, m),
+      thickness, mask,
+    );
+
     self.postMessage({ type: 'progress', stage: 'Building velocity overlay...', progress: 0.7 });
 
     // Decode velocity
@@ -351,6 +493,11 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
         colors: iceResult.colors,
         indices: iceResult.indices,
       },
+      iceSide: {
+        positions: iceSideResult.positions,
+        colors: iceSideResult.colors,
+        indices: iceSideResult.indices,
+      },
       iceBottom: {
         positions: iceBottomResult.positions,
         colors: iceBottomResult.colors,
@@ -372,6 +519,9 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
       result.ice.positions.buffer,
       result.ice.colors.buffer,
       result.ice.indices.buffer,
+      result.iceSide.positions.buffer,
+      result.iceSide.colors.buffer,
+      result.iceSide.indices.buffer,
       result.iceBottom.positions.buffer,
       result.iceBottom.colors.buffer,
       result.iceBottom.indices.buffer,
