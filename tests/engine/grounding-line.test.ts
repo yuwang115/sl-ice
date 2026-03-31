@@ -155,7 +155,6 @@ describe('computeIceBase', () => {
 
 describe('computeIceVolume', () => {
   it('computes total volume and volume above flotation', () => {
-    const nx = 3;
     const dx = 1000;
     const H = new Float64Array([2000, 2000, 500]);
     const b = new Float64Array([-500, -500, -1000]);
