@@ -33,7 +33,7 @@ export default function Header() {
   };
 
   return (
-    <header className="glass-panel border-b px-4 py-2 flex items-center justify-between">
+    <header className="glass-panel border-b px-4 py-2 flex items-center justify-between" role="banner">
       {/* Left: menu + logo + optional back-to-explorer */}
       <div className="flex items-center gap-3">
         <button
@@ -61,17 +61,18 @@ export default function Header() {
 
       {/* Center: mode tabs */}
       {mode !== 'menu' && (
-        <div className="flex items-center gap-1.5">
+        <nav className="flex items-center gap-1.5" role="navigation" aria-label="Simulation modes">
           {modes.map(({ key, label, labelZh }) => (
             <button
               key={key}
               onClick={() => handleModeSwitch(key)}
               className={`pill-btn text-[11px] ${mode === key ? 'active' : ''}`}
+              aria-current={mode === key ? 'page' : undefined}
             >
               {isZh ? labelZh : label}
             </button>
           ))}
-        </div>
+        </nav>
       )}
 
       {/* Right: playback + theme + language */}

@@ -22,6 +22,8 @@ export interface UserParams {
   enable_hydrology: boolean;
   curtain_position?: number;   // Geoengineering: seafloor barrier position (km)
   curtain_efficiency?: number; // Geoengineering: barrier efficiency (0-1)
+  enable_mici?: boolean;       // Enable Marine Ice Cliff Instability
+  mici_sensitivity?: number;   // Scaling factor for MICI rate coefficient (default 1.0)
 }
 
 export interface PhysicsState {
@@ -46,6 +48,9 @@ export interface PhysicsStatePayload {
   shelf_exists: boolean;     // Whether an ice shelf exists
   water_pressure: Float64Array; // Normalized subglacial water saturation profile
   is_misi_active: boolean;   // Whether MISI is currently active
+  cliff_height: number;      // Freeboard at calving front (m)
+  mici_calving_rate: number; // Current MICI calving rate (m/yr)
+  is_mici_active: boolean;   // Whether MICI is currently active
   events: GameEvent[];       // Triggered game events
   smb: Float64Array;         // Surface mass balance profile (m/yr)
   u_depth_avg: Float64Array; // Depth-averaged velocity (m/yr)
@@ -58,7 +63,9 @@ export interface GameEvent {
     | 'misi_triggered'
     | 'hysteresis_locked'
     | 'city_flooded'
-    | 'ice_recovered';
+    | 'ice_recovered'
+    | 'mici_triggered'
+    | 'cliff_failure';
   message_en: string;
   message_zh: string;
   severity: 'info' | 'warning' | 'critical';
@@ -153,6 +160,11 @@ export interface ModelState {
   is_misi_active: boolean;
   misi_triggered_year: number;
   hysteresis_locked: boolean;
+
+  // MICI tracking
+  cliff_height: number;           // Current freeboard at calving front (m)
+  mici_calving_rate: number;      // Current MICI calving rate (m/yr)
+  is_mici_active: boolean;        // Whether MICI is currently active
 
   // Ice volume tracking
   initial_volume: number;    // km³

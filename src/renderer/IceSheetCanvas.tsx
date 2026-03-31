@@ -10,11 +10,11 @@ import type { DrawContext } from './draw-bedrock';
 import { drawBedrock } from './draw-bedrock';
 import { drawOcean } from './draw-ocean';
 import { drawIce, drawGroundingLine } from './draw-ice';
-import { drawAxes, drawMISIWarning, drawVelocityArrows } from './draw-annotations';
+import { drawAxes, drawMISIWarning, drawMICIWarning, drawCliffIndicator, drawVelocityArrows } from './draw-annotations';
 import { drawSnowfall, resetSnowfall } from './particles/snowfall';
 import { drawWaterFlow, resetWaterFlow } from './particles/water-flow';
 import { drawOceanCurrent, resetOceanCurrent } from './particles/ocean-current';
-import { drawCalving, resetCalving } from './particles/calving';
+import { drawCalving, resetCalving, triggerCalving } from './particles/calving';
 import { getShakeOffset } from './effects/screen-shake';
 import { drawGlow } from './effects/pulse-glow';
 
@@ -25,6 +25,8 @@ export default function IceSheetCanvas() {
   const scenarioRef = useRef<ReturnType<typeof usePhysicsStore.getState>['scenario']>(null);
   const paramsRef = useRef(useGameStore.getState().params);
   const xPositionCacheRef = useRef<{ key: string; positions: Float64Array } | null>(null);
+  const prevIceFrontRef = useRef<number>(-1);
+  const lastCalvingSpawnRef = useRef<number>(0);
 
   const physicsState = usePhysicsStore((s) => s.state);
   const scenario = usePhysicsStore((s) => s.scenario);
@@ -173,11 +175,42 @@ export default function IceSheetCanvas() {
       drawWaterFlow(dc, water_pressure, b, H, xPositions, is_floating);
     }
     drawOceanCurrent(dc, is_floating, b, H, xPositions, params.T_ocean_delta);
+
+    // ── Auto-spawn icebergs when ice front retreats ──
+    {
+      let iceFrontIdx = -1;
+      for (let i = H.length - 1; i >= 0; i--) {
+        if (H[i] >= 50) { iceFrontIdx = i; break; }
+      }
+      const now = Date.now();
+      if (iceFrontIdx >= 0 && prevIceFrontRef.current >= 0) {
+        const retreated = prevIceFrontRef.current > iceFrontIdx;
+        const hasVelocity = iceFrontIdx < u_surface.length && u_surface[iceFrontIdx] > 100;
+        if (retreated && now - lastCalvingSpawnRef.current > 800) {
+          triggerCalving(xPositions[iceFrontIdx], s[iceFrontIdx], 3 + Math.floor(Math.random() * 4));
+          lastCalvingSpawnRef.current = now;
+        } else if (hasVelocity && now - lastCalvingSpawnRef.current > 2000) {
+          // Steady-state calving: occasional small icebergs at the terminus
+          triggerCalving(xPositions[iceFrontIdx], s[iceFrontIdx], 1 + Math.floor(Math.random() * 2));
+          lastCalvingSpawnRef.current = now;
+        }
+      }
+      prevIceFrontRef.current = iceFrontIdx;
+    }
+
     drawCalving(dc);
+
+    // ── MICI cliff indicator ──
+    if (physicsState.is_mici_active) {
+      drawCliffIndicator(dc, physicsState.cliff_height, physicsState.mici_calving_rate, H, s, ice_base, xPositions);
+    }
 
     // ── Effects ──
     if (physicsState.is_misi_active) {
       drawMISIWarning(dc);
+    }
+    if (physicsState.is_mici_active) {
+      drawMICIWarning(dc);
     }
     drawGlow(ctx, displayW, displayH);
 

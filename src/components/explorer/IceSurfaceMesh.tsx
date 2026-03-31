@@ -27,14 +27,19 @@ export default function IceSurfaceMesh() {
 
   return (
     <mesh geometry={geometry} renderOrder={ICE_SURFACE_RENDER_ORDER}>
-      <meshStandardMaterial
+      <meshPhysicalMaterial
         vertexColors
         transparent
         opacity={iceOpacity}
-        roughness={0.38}
+        roughness={0.24}
         metalness={0.02}
+        clearcoat={0.42}
+        clearcoatRoughness={0.16}
+        specularIntensity={0.5}
+        specularColor={0xe8f7ff}
+        ior={1.31}
         side={THREE.DoubleSide}
-        depthWrite={false}
+        depthWrite
       />
     </mesh>
   );

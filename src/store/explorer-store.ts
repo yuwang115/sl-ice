@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import type { MeshArrays } from '../lib/terrain/mesh-builder';
+import type { MeshArrays, VelocityMeshArrays } from '../lib/terrain/mesh-builder';
 import type { RGB } from '../lib/terrain/color-functions';
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -36,8 +36,10 @@ export interface ExplorerStore {
   horizontalMetersPerUnit: number;
   verticalMetersPerUnit: number;
 
-  // Decoded surface heights (for flowline projection)
+  // Decoded grid arrays (for flowline projection & profile sampling)
   surfaceHeights: Float32Array | null;
+  bedHeights: Float32Array | null;
+  thicknessData: Float32Array | null;
   gridNx: number;
   gridNy: number;
 
@@ -46,7 +48,7 @@ export interface ExplorerStore {
   iceArrays: MeshArrays | null;
   iceSideArrays: MeshArrays | null;
   iceBottomArrays: MeshArrays | null;
-  velocityArrays: MeshArrays | null;
+  velocityArrays: VelocityMeshArrays | null;
 
   // Color table
   bedColorTable: { ocean: RGB[]; land: RGB[] } | null;
@@ -78,11 +80,13 @@ export interface ExplorerStore {
 
   setScaleFactors: (h: number, v: number) => void;
   setSurfaceHeights: (data: Float32Array, nx: number, ny: number) => void;
+  setBedHeights: (data: Float32Array) => void;
+  setThicknessData: (data: Float32Array) => void;
   setBedArrays: (arrays: MeshArrays) => void;
   setIceArrays: (arrays: MeshArrays) => void;
   setIceSideArrays: (arrays: MeshArrays) => void;
   setIceBottomArrays: (arrays: MeshArrays) => void;
-  setVelocityArrays: (arrays: MeshArrays) => void;
+  setVelocityArrays: (arrays: VelocityMeshArrays) => void;
   setBedColorTable: (table: { ocean: RGB[]; land: RGB[] }) => void;
 
   setHoveredFlowline: (id: string | null) => void;
@@ -112,6 +116,8 @@ const initialState = {
   verticalMetersPerUnit: 1,
 
   surfaceHeights: null as Float32Array | null,
+  bedHeights: null as Float32Array | null,
+  thicknessData: null as Float32Array | null,
   gridNx: 0,
   gridNy: 0,
 
@@ -119,7 +125,7 @@ const initialState = {
   iceArrays: null as MeshArrays | null,
   iceSideArrays: null as MeshArrays | null,
   iceBottomArrays: null as MeshArrays | null,
-  velocityArrays: null as MeshArrays | null,
+  velocityArrays: null as VelocityMeshArrays | null,
   bedColorTable: null as { ocean: RGB[]; land: RGB[] } | null,
 
   hoveredFlowlineId: null as string | null,
@@ -134,7 +140,7 @@ const initialState = {
   showVelocity: true,
   showFlowlines: true,
 
-  iceOpacity: 1.0,
+  iceOpacity: 0.65,
 
   exaggeration: 4.8,
 };
@@ -168,6 +174,8 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
 
   setSurfaceHeights: (data, nx, ny) =>
     set({ surfaceHeights: data, gridNx: nx, gridNy: ny }),
+  setBedHeights: (data) => set({ bedHeights: data }),
+  setThicknessData: (data) => set({ thicknessData: data }),
 
   setBedArrays: (arrays) => set({ bedArrays: arrays }),
   setIceArrays: (arrays) => set({ iceArrays: arrays }),

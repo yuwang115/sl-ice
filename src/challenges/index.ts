@@ -171,4 +171,31 @@ export const challenges: ChallengeDefinition[] = [
     check_lose: () => false,
     unlock_condition: (completed) => completed.length >= 6,
   },
+
+  // Challenge 8: The Cliff
+  {
+    id: 8,
+    name_en: 'The Cliff',
+    name_zh: '冰崖危机',
+    subtitle_en: 'The shelf is gone. Now the cliffs are failing.',
+    subtitle_zh: '冰架已经消失。现在冰崖正在崩塌。',
+    description_en: 'With MICI enabled, ice cliffs collapse when they grow too tall to support their own weight. After the ice shelf disintegrates, the exposed cliff triggers a runaway positive feedback — especially on retrograde slopes where retreat exposes even thicker, taller ice. Can you slow the cascade?',
+    description_zh: '启用MICI后，过高的冰崖会因自重超过冰的屈服强度而发生结构性崩塌。冰架解体后，暴露的冰崖触发失控的正反馈——尤其在逆坡上，退缩暴露出更厚、更高的冰。你能减缓这场连锁崩塌吗？',
+    difficulty: 5,
+    scenario: 'scenario_b_misi',
+    concepts: ['mici', 'cliff_failure', 'positive_feedback', 'cascading_instability'],
+    initial_params: {
+      T_ocean_delta: 2,
+      enable_mici: true,
+      mici_sensitivity: 1.0,
+    },
+    enable_hydrology: false,
+    duration_years: 500,
+    check_win: (state, elapsed) => {
+      if (elapsed < 500) return false;
+      return state.sea_level < 1.0;
+    },
+    check_lose: (state) => state.sea_level > 3.0,
+    unlock_condition: (completed) => completed.includes(3),
+  },
 ];

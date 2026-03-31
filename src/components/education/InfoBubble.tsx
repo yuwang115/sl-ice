@@ -6,12 +6,30 @@ import { useEffect } from 'react';
 import { usePhysicsStore } from '../../store/physics-store';
 import { useGameStore } from '../../store/game-store';
 import { useUIStore } from '../../store/ui-store';
+import { triggerShake } from '../../renderer/effects/screen-shake';
+import { triggerGlow } from '../../renderer/effects/pulse-glow';
+import { triggerCalving } from '../../renderer/particles/calving';
+import type { PhysicsStatePayload } from '../../engine/types';
+
+/** Find the ice front position and surface elevation from physics state. */
+function getIceFront(state: PhysicsStatePayload): { frontX: number; frontZ: number } {
+  // Scan from ocean end to find last node with substantial ice
+  for (let i = state.H.length - 1; i >= 0; i--) {
+    if (state.H[i] >= 50) {
+      const dx = (state.gl_position * 1000) / Math.max(1, state.H.length - 1);
+      return { frontX: i * dx, frontZ: state.s[i] || 0 };
+    }
+  }
+  return { frontX: state.gl_position * 1000, frontZ: 0 };
+}
 
 export default function InfoBubble() {
   const events = usePhysicsStore((s) => s.events);
   const { addEvent, pendingEvents, dismissEvent } = useGameStore();
   const language = useUIStore((s) => s.language);
   const isZh = language === 'zh';
+
+  const physicsState = usePhysicsStore((s) => s.state);
 
   useEffect(() => {
     for (const event of events) {
@@ -20,8 +38,29 @@ export default function InfoBubble() {
         message: isZh ? event.message_zh : event.message_en,
         severity: event.severity,
       });
+
+      // Trigger visual effects for critical events
+      if (event.type === 'mici_triggered') {
+        triggerShake(8, 800);
+        triggerGlow('rgba(255, 140, 0', 1200);
+      }
+      if (event.type === 'cliff_failure' && physicsState) {
+        const { frontX, frontZ } = getIceFront(physicsState);
+        triggerCalving(frontX, frontZ, 8, true);
+        triggerShake(5, 500);
+      }
+      if (event.type === 'misi_triggered') {
+        triggerShake(6, 600);
+        triggerGlow('rgba(255, 68, 68', 1000);
+      }
+      if (event.type === 'shelf_collapsed' && physicsState) {
+        const { frontX, frontZ } = getIceFront(physicsState);
+        triggerCalving(frontX, frontZ, 15, true);
+        triggerShake(10, 1000);
+        triggerGlow('rgba(255, 68, 68', 1500);
+      }
     }
-  }, [events, isZh, addEvent]);
+  }, [events, isZh, addEvent, physicsState]);
 
   if (pendingEvents.length === 0) return null;
 
@@ -45,7 +84,7 @@ export default function InfoBubble() {
   const style = severityStyles[current.severity] || severityStyles.info;
 
   return (
-    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 max-w-md animate-in">
+    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 max-w-md animate-in" role="alert" aria-live="assertive">
       <div
         className="rounded-xl p-4 backdrop-blur-md"
         style={{

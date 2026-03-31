@@ -22,7 +22,13 @@ export default function Sidebar() {
   const isZh = language === 'zh';
 
   return (
-    <div className="w-64 glass-panel border-l p-4 overflow-y-auto flex-shrink-0">
+    <>
+      {/* Mobile backdrop */}
+      <div
+        className="fixed inset-0 bg-black/30 z-40 md:hidden"
+        onClick={() => useUIStore.getState().toggleSidebar()}
+      />
+      <aside className="fixed right-0 top-0 bottom-0 w-64 z-50 md:static md:z-auto glass-panel border-l p-4 overflow-y-auto flex-shrink-0" role="complementary" aria-label="Parameter controls">
       <h3 className="font-data text-xs font-medium uppercase tracking-widest mb-4" style={{ color: 'var(--accent-light)' }}>
         {isZh ? '\u63a7\u5236\u9762\u677f' : 'Controls'}
       </h3>
@@ -86,6 +92,32 @@ export default function Sidebar() {
         </button>
       </div>
 
+      {/* MICI toggle */}
+      <div className="mt-3 flex items-center justify-between">
+        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          {isZh ? '\u51b0\u5d16\u4e0d\u7a33\u5b9a\u6027 (MICI)' : 'Ice Cliff Instability'}
+        </span>
+        <button
+          onClick={() => handleChange('enable_mici', !params.enable_mici)}
+          className={`pill-btn text-[11px] ${params.enable_mici ? 'active' : ''}`}
+        >
+          {params.enable_mici ? 'ON' : 'OFF'}
+        </button>
+      </div>
+
+      {params.enable_mici && (
+        <ParameterSlider
+          label={isZh ? 'MICI \u654f\u611f\u5ea6' : 'MICI Sensitivity'}
+          value={params.mici_sensitivity ?? 1.0}
+          min={0.1}
+          max={3.0}
+          step={0.1}
+          unit="x"
+          onChange={(v) => handleChange('mici_sensitivity', v)}
+          color="var(--accent-warm)"
+        />
+      )}
+
       {/* Curtain controls (for geoengineering challenge) */}
       {params.curtain_position != null && (
         <>
@@ -117,6 +149,7 @@ export default function Sidebar() {
           />
         </>
       )}
-    </div>
+      </aside>
+    </>
   );
 }

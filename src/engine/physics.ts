@@ -19,6 +19,7 @@ import { solveBP, depthAverageVelocity, surfaceVelocity, basalVelocity } from '.
 import { computeSMB } from './smb';
 import { computeOceanMelt } from './ocean-melt';
 import { evolveThickness, applyCalving } from './ice-thickness';
+import { applyCliffCalving } from './cliff-calving';
 import {
   updateGroundingLine, computeSurfaceElevation, computeIceBase, computeIceVolume,
 } from './grounding-line';
@@ -32,6 +33,19 @@ import type {
 
 const FLOWLINE_WIDTH_METERS = 1000;
 const GIGATONNES_PER_KM3_ICE = RHO_ICE * 1e-3;
+
+/** Maximum allowed CFL number for stability */
+const CFL_MAX = 0.8;
+
+/**
+ * Compute effective dt limited by CFL condition.
+ * CFL = u_max * dt / dx < CFL_MAX
+ */
+function cflLimitedDt(dt: number, uMax: number, dx: number): number {
+  if (uMax <= 0) return dt;
+  const cflDt = CFL_MAX * dx / uMax;
+  return Math.min(dt, cflDt);
+}
 
 /**
  * Create the computational grid.
@@ -215,6 +229,9 @@ export function initializeModel(config: ScenarioConfig): ModelState {
     is_misi_active: false,
     misi_triggered_year: -1,
     hysteresis_locked: false,
+    cliff_height: 0,
+    mici_calving_rate: 0,
+    is_mici_active: false,
     initial_volume: volume,
     initial_volume_above_flotation: volumeAboveFlotation,
     volume,
@@ -278,14 +295,34 @@ export function stepPhysics(
   // Compute depth-averaged velocity
   state.u_depth_avg = depthAverageVelocity(state.u, nx, nz);
 
-  // 3. Evolve ice thickness
+  // 3. Evolve ice thickness with CFL-limited dt
+  let uMax = 0;
+  for (let i = 0; i < nx; i++) {
+    if (state.u_depth_avg[i] > uMax) uMax = state.u_depth_avg[i];
+  }
+  const safeDt = cflLimitedDt(dt, uMax, grid.dx);
+
   const H_new = evolveThickness(
-    state.H, state.u_depth_avg, state.smb, state.basal_melt, grid, dt,
+    state.H, state.u_depth_avg, state.smb, state.basal_melt, grid, safeDt,
   );
 
   // 4. Apply calving
   const { H: H_calved, calved } = applyCalving(H_new, state.is_floating);
   state.H = H_calved;
+
+  // 4b. Apply MICI cliff calving (opt-in)
+  const prevMICIActive = state.is_mici_active;
+  if (state.params.enable_mici) {
+    const mici = applyCliffCalving(state, dt);
+    state.H = mici.H;
+    state.cliff_height = mici.cliff_height;
+    state.mici_calving_rate = mici.mici_calving_rate;
+    state.is_mici_active = mici.is_mici_active;
+  } else {
+    state.cliff_height = 0;
+    state.mici_calving_rate = 0;
+    state.is_mici_active = false;
+  }
 
   // 5. Update grounding line
   state.prev_gl_position = state.gl_position;
@@ -311,12 +348,14 @@ export function stepPhysics(
     config,
   );
 
-  // 8. Advance time
-  state.year += dt;
+  // 8. Advance time (use CFL-limited dt)
+  state.year += safeDt;
 
   // 9. Detect events
   // GL retreat rate
-  state.gl_retreat_rate = (state.prev_gl_position - state.gl_position) / dt; // m/yr (positive = retreat)
+  state.gl_retreat_rate = safeDt > 0
+    ? (state.prev_gl_position - state.gl_position) / safeDt
+    : 0; // m/yr (positive = retreat)
 
   // MISI detection: accelerating retreat on retrograde slope
   if (state.gl_retreat_rate > 500 && !state.is_misi_active) {
@@ -349,12 +388,37 @@ export function stepPhysics(
   }
 
   // Shelf collapse detection
-  const shelfExists = state.is_floating.some((v: number) => v === 1 && state.H[state.is_floating.indexOf(v)] > 50);
+  let shelfExists = false;
+  for (let i = 0; i < nx; i++) {
+    if (state.is_floating[i] === 1 && state.H[i] > 50) {
+      shelfExists = true;
+      break;
+    }
+  }
   if (calved && !shelfExists) {
     events.push({
       type: 'shelf_collapsed',
       message_en: 'The ice shelf has collapsed! The "cork" is gone — ice will flow faster into the ocean.',
       message_zh: '冰架已崩塌！"瓶塞"消失了——冰将更快涌入海洋。',
+      severity: 'critical',
+    });
+  }
+
+  // MICI detection
+  if (state.is_mici_active && !prevMICIActive) {
+    events.push({
+      type: 'mici_triggered',
+      message_en: 'Marine Ice Cliff Instability activated! The exposed ice cliff is too tall to support itself — structural failure is accelerating calving.',
+      message_zh: '海洋冰崖不稳定性已激活！暴露的冰崖太高无法自撑——结构破坏正在加速崩解。',
+      severity: 'critical',
+    });
+  }
+
+  if (state.mici_calving_rate > 500 && state.is_mici_active) {
+    events.push({
+      type: 'cliff_failure',
+      message_en: `Rapid cliff failure: calving at ${state.mici_calving_rate.toFixed(0)} m/yr!`,
+      message_zh: `冰崖快速崩塌：崩解速率 ${state.mici_calving_rate.toFixed(0)} 米/年！`,
       severity: 'critical',
     });
   }
@@ -410,6 +474,9 @@ export function extractStatePayload(state: ModelState): PhysicsStatePayload {
     shelf_exists: state.is_floating.some((v: number) => v === 1),
     water_pressure: new Float64Array(state.W),
     is_misi_active: state.is_misi_active,
+    cliff_height: state.cliff_height,
+    mici_calving_rate: state.mici_calving_rate,
+    is_mici_active: state.is_mici_active,
     events: [],
     smb: new Float64Array(state.smb),
     u_depth_avg: new Float64Array(state.u_depth_avg),

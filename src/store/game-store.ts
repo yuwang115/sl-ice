@@ -3,6 +3,7 @@
  */
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { GameMode, SimulationSpeed, ChallengeStatus, UserParams } from '../engine/types';
 
 interface ChallengeProgress {
@@ -59,7 +60,28 @@ const defaultParams: UserParams = {
   enable_hydrology: false,
 };
 
-export const useGameStore = create<GameStore>((set, get) => ({
+/** Parameter bounds for numeric UserParams fields */
+const PARAM_BOUNDS: Partial<Record<keyof UserParams, { min: number; max: number }>> = {
+  T_atm_delta: { min: -20, max: 20 },
+  T_ocean_delta: { min: -5, max: 10 },
+  precip_scale: { min: 0, max: 5 },
+  drain_efficiency: { min: 0.01, max: 10 },
+  mici_sensitivity: { min: 0, max: 10 },
+  curtain_position: { min: 0, max: 1000 },
+  curtain_efficiency: { min: 0, max: 1 },
+};
+
+/** Clamp a parameter value to its valid range */
+function clampParam<K extends keyof UserParams>(key: K, value: UserParams[K]): UserParams[K] {
+  const bounds = PARAM_BOUNDS[key];
+  if (bounds && typeof value === 'number') {
+    return Math.max(bounds.min, Math.min(bounds.max, value)) as UserParams[K];
+  }
+  return value;
+}
+
+export const useGameStore = create<GameStore>()(persist(
+  (set, get) => ({
   mode: 'explorer',
   setMode: (mode) =>
     set((s) => ({
@@ -82,9 +104,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   params: { ...defaultParams },
   setParam: (key, value) =>
-    set((s) => ({ params: { ...s.params, [key]: value } })),
-  setParams: (params) =>
-    set((s) => ({ params: { ...s.params, ...params } })),
+    set((s) => ({ params: { ...s.params, [key]: clampParam(key, value) } })),
+  setParams: (params) => {
+    const clamped = { ...params };
+    for (const key of Object.keys(clamped) as (keyof UserParams)[]) {
+      if (clamped[key] !== undefined) {
+        (clamped as Record<string, unknown>)[key] = clampParam(key, clamped[key] as UserParams[typeof key]);
+      }
+    }
+    set((s) => ({ params: { ...s.params, ...clamped } }));
+  },
   resetParams: () => set({ params: { ...defaultParams } }),
 
   currentChallenge: null,
@@ -96,6 +125,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     { id: 5, status: 'available' },
     { id: 6, status: 'available' },
     { id: 7, status: 'locked' },
+    { id: 8, status: 'locked' },
   ],
   startChallenge: (id) =>
     set((s) => ({
@@ -116,11 +146,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }
         return c;
       });
-      // Unlock challenge 7 if all others completed
+      // Unlock challenges based on completion
       const completedIds = progress.filter((c) => c.status === 'won').map((c) => c.id);
+      // Challenge 7: unlocks when 6+ challenges completed
       if (completedIds.length >= 6 && !completedIds.includes(7)) {
         const idx = progress.findIndex((c) => c.id === 7);
         if (idx >= 0) progress[idx] = { ...progress[idx], status: 'available' };
+      }
+      // Challenge 8: unlocks when "The Cork" (id=3) is completed
+      if (completedIds.includes(3) && !completedIds.includes(8)) {
+        const idx = progress.findIndex((c) => c.id === 8);
+        if (idx >= 0 && progress[idx].status === 'locked') {
+          progress[idx] = { ...progress[idx], status: 'available' };
+        }
       }
       return { challengeProgress: progress, currentChallenge: null };
     }),
@@ -147,4 +185,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((s) => ({
       pendingEvents: s.pendingEvents.filter((e) => e.id !== id),
     })),
-}));
+}),
+  {
+    name: 'sl-ice-game',
+    partialize: (state) => ({
+      challengeProgress: state.challengeProgress,
+    }),
+  },
+));

@@ -3,7 +3,7 @@
  * Manages data loading via a custom hook that orchestrates fetch → worker → store.
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -42,6 +42,8 @@ function useTerrainLoader() {
   const setError = useExplorerStore((s) => s.setError);
   const setScaleFactors = useExplorerStore((s) => s.setScaleFactors);
   const setSurfaceHeights = useExplorerStore((s) => s.setSurfaceHeights);
+  const setBedHeights = useExplorerStore((s) => s.setBedHeights);
+  const setThicknessData = useExplorerStore((s) => s.setThicknessData);
   const setBedArrays = useExplorerStore((s) => s.setBedArrays);
   const setIceArrays = useExplorerStore((s) => s.setIceArrays);
   const setIceSideArrays = useExplorerStore((s) => s.setIceSideArrays);
@@ -106,6 +108,8 @@ function useTerrainLoader() {
           if (data.type === 'result') {
             setScaleFactors(data.hScale, data.vScale);
             setSurfaceHeights(data.surface, data.nx, data.ny);
+            setBedHeights(data.bedHeights);
+            setThicknessData(data.thicknessData);
             setBedArrays(data.bed);
             setIceArrays(data.ice);
             setIceSideArrays(data.iceSide);
@@ -141,7 +145,7 @@ function useTerrainLoader() {
     run();
   }, [
     loadingStage,
-    setLoadingStage, setError, setScaleFactors, setSurfaceHeights,
+    setLoadingStage, setError, setScaleFactors, setSurfaceHeights, setBedHeights, setThicknessData,
     setBedArrays, setIceArrays, setIceSideArrays, setIceBottomArrays, setVelocityArrays, setBedColorTable,
   ]);
 }
@@ -178,14 +182,25 @@ function ExplorerOrbitControls() {
   const isTransitioning = useExplorerStore((s) => s.isTransitioning);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const resumeTimerRef = useRef<number | null>(null);
-  const [autoRotate, setAutoRotate] = useState(true);
+  const autoRotateEnabledRef = useRef(true);
+
+  const syncAutoRotate = useCallback((enabled: boolean) => {
+    autoRotateEnabledRef.current = enabled;
+
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    controls.autoRotate = enabled && !isTransitioning;
+    controls.update();
+  }, [isTransitioning]);
 
   useEffect(() => {
     const controls = controlsRef.current;
     if (!controls) return;
     controls.target.set(...DEFAULT_CAMERA_TARGET);
+    controls.autoRotate = autoRotateEnabledRef.current && !isTransitioning;
     controls.update();
-  }, []);
+  }, [isTransitioning]);
 
   const clearResumeTimer = useCallback(() => {
     if (resumeTimerRef.current !== null) {
@@ -196,15 +211,15 @@ function ExplorerOrbitControls() {
 
   const pauseAutoRotate = useCallback(() => {
     clearResumeTimer();
-    setAutoRotate(false);
-  }, [clearResumeTimer]);
+    syncAutoRotate(false);
+  }, [clearResumeTimer, syncAutoRotate]);
 
   const scheduleAutoRotateResume = useCallback(() => {
     clearResumeTimer();
     resumeTimerRef.current = window.setTimeout(() => {
-      setAutoRotate(true);
+      syncAutoRotate(true);
     }, AUTO_ROTATE_IDLE_RESUME_MS);
-  }, [clearResumeTimer]);
+  }, [clearResumeTimer, syncAutoRotate]);
 
   useEffect(() => {
     const controls = controlsRef.current;
@@ -231,8 +246,19 @@ function ExplorerOrbitControls() {
   }, [clearResumeTimer, pauseAutoRotate, scheduleAutoRotateResume]);
 
   useEffect(() => {
+    const controls = controlsRef.current;
     if (isTransitioning) {
       clearResumeTimer();
+      if (controls) {
+        controls.autoRotate = false;
+        controls.update();
+      }
+      return;
+    }
+
+    if (controls) {
+      controls.autoRotate = autoRotateEnabledRef.current;
+      controls.update();
     }
   }, [clearResumeTimer, isTransitioning]);
 
@@ -244,8 +270,6 @@ function ExplorerOrbitControls() {
       dampingFactor={0.08}
       minDistance={0.2}
       maxDistance={360}
-      zoomSpeed={0.8}
-      autoRotate={autoRotate && !isTransitioning}
       autoRotateSpeed={DEFAULT_AUTO_ROTATE_SPEED}
     />
   );

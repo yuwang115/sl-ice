@@ -140,11 +140,18 @@ export const usePhysicsStore = create<PhysicsStore>((set, get) => ({
   },
 
   step: (dt = 1.0, nSteps = 1) => {
-    const { worker, isInitialized, isWorkerBusy } = get();
-    if (!worker || !isInitialized || isWorkerBusy) return false;
+    // Atomic check-and-set to prevent race condition:
+    // Use a single set() call that both checks and flips the flag.
+    let dispatched = false;
+    set((s) => {
+      if (!s.worker || !s.isInitialized || s.isWorkerBusy) return s;
+      dispatched = true;
+      return { ...s, isWorkerBusy: true };
+    });
+    if (!dispatched) return false;
 
-    set({ isWorkerBusy: true });
-    worker.postMessage({
+    const { worker } = get();
+    worker!.postMessage({
       type: 'step',
       payload: { dt, nSteps },
     });

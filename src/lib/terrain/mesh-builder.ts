@@ -16,6 +16,14 @@ export interface MeshArrays {
   readonly indices: Uint32Array;
 }
 
+export interface VelocityMeshArrays extends MeshArrays {
+  readonly uvs: Float32Array;
+  readonly velocityX: Float32Array;
+  readonly velocityY: Float32Array;
+  readonly velocitySpeed: Float32Array;
+  readonly velocityValid: Uint8Array;
+}
+
 export interface BuildSurfaceParams {
   readonly nx: number;
   readonly ny: number;

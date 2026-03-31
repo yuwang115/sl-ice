@@ -17,6 +17,21 @@ import IceSheetCanvas from './renderer/IceSheetCanvas';
 import InfoBubble from './components/education/InfoBubble';
 import TransitionOverlay from './components/explorer/TransitionOverlay';
 
+/** Fetch with retry (exponential backoff) */
+async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response;
+    } catch (err) {
+      if (attempt === retries - 1) throw err;
+      await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+    }
+  }
+  throw new Error('Fetch failed');
+}
+
 // Lazy-load the 3D explorer (Three.js is ~700KB) to keep initial bundle small
 const AntarcticaExplorer = lazy(() => import('./components/game/AntarcticaExplorer'));
 
@@ -66,13 +81,13 @@ function App() {
   // Load default scenario when entering sandbox mode
   useEffect(() => {
     if (mode === 'sandbox') {
-      fetch('/data/scenarios/scenario_b_misi.json')
+      fetchWithRetry('/data/scenarios/scenario_b_misi.json')
         .then((r) => r.json())
         .then((config) => {
           loadScenario(config);
           setRunning(true);
         })
-        .catch(console.error);
+        .catch((err) => console.error('Failed to load scenario:', err));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
@@ -156,13 +171,13 @@ function App() {
 
       <div className="flex-1 flex min-h-0">
         {/* Canvas area */}
-        <div className="flex-1 relative min-w-0">
+        <main className="flex-1 relative min-w-0 overflow-hidden" role="main" aria-label="Ice sheet simulation">
           <IceSheetCanvas />
           <InfoBubble />
 
           {/* Challenge overlay */}
           {mode === 'challenge' && currentChallenge && <ChallengePanel />}
-        </div>
+        </main>
 
         {/* Sidebar */}
         <Sidebar />

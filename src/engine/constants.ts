@@ -163,3 +163,11 @@ export const U_MAX = 10000;
 
 /** Convert ice volume (m³) to sea level equivalent (m) */
 export const VOLUME_TO_SLE = RHO_ICE / (RHO_WATER * 3.625e14); // Ocean area ~362.5 million km²
+
+// ─── Cliff Calving (MICI) ──────────────────────────────────────
+
+/** MICI base calving rate coefficient (m/yr) — Schlemm & Levermann 2019 */
+export const MICI_C0 = 91.25;
+
+/** Maximum MICI calving rate cap for mélange backstress (m/yr) */
+export const MICI_C_MAX = 3000;

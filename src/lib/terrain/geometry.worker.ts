@@ -40,6 +40,7 @@ type RGB = [number, number, number];
 
 const TARGET_WORLD_EXTENT_UNITS = 128;
 const BASE_HORIZONTAL_VERTICAL_SCALE_RATIO = 52_000 / 3_800;
+const FLOWLINE_SURFACE_OFFSET_M = 26;
 const BED_ELEVATION_MIN = -7_000;
 const BED_ELEVATION_MAX = 3_500;
 const ICE_THICKNESS_REFERENCE = 4_200;
@@ -155,6 +156,14 @@ interface BuildResult {
   indices: Uint32Array;
 }
 
+interface VelocityBuildResult extends BuildResult {
+  uvs: Float32Array;
+  velocityX: Float32Array;
+  velocityY: Float32Array;
+  velocitySpeed: Float32Array;
+  velocityValid: Uint8Array;
+}
+
 function buildSurface(
   nx: number, ny: number,
   dxMeters: number, dyMeters: number,
@@ -196,6 +205,67 @@ function buildSurface(
   }
 
   return { positions, colors, indices: new Uint32Array(idxList) };
+}
+
+function buildVelocitySurface(
+  nx: number,
+  ny: number,
+  dxMeters: number,
+  dyMeters: number,
+  hScale: number,
+  vScale: number,
+  heights: Float32Array,
+  valid: Uint8Array,
+  velocityX: Float32Array,
+  velocityY: Float32Array,
+  velocitySpeed: Float32Array,
+): VelocityBuildResult {
+  const vertexCount = nx * ny;
+  const positions = new Float32Array(vertexCount * 3);
+  const colors = new Uint8Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
+  const indices: number[] = [];
+  const halfX = (nx - 1) / 2;
+  const halfY = (ny - 1) / 2;
+  const absDy = Math.abs(dyMeters);
+
+  for (let row = 0; row < ny; row++) {
+    for (let col = 0; col < nx; col++) {
+      const i = row * nx + col;
+      positions[3 * i] = ((col - halfX) * dxMeters) / hScale;
+      positions[3 * i + 1] = valid[i] ? heights[i] / vScale : 0;
+      positions[3 * i + 2] = ((row - halfY) * absDy) / hScale;
+      uvs[2 * i] = col / Math.max(1, nx - 1);
+      uvs[2 * i + 1] = row / Math.max(1, ny - 1);
+
+      const rgb = velocityColor(velocitySpeed[i]);
+      colors[3 * i] = Math.round(rgb[0] * 255);
+      colors[3 * i + 1] = Math.round(rgb[1] * 255);
+      colors[3 * i + 2] = Math.round(rgb[2] * 255);
+    }
+  }
+
+  for (let row = 0; row < ny - 1; row++) {
+    for (let col = 0; col < nx - 1; col++) {
+      const i0 = row * nx + col;
+      const i1 = i0 + 1;
+      const i2 = i0 + nx;
+      const i3 = i2 + 1;
+      if (valid[i0] && valid[i2] && valid[i1]) indices.push(i0, i2, i1);
+      if (valid[i1] && valid[i2] && valid[i3]) indices.push(i1, i2, i3);
+    }
+  }
+
+  return {
+    positions,
+    colors,
+    uvs,
+    indices: new Uint32Array(indices),
+    velocityX,
+    velocityY,
+    velocitySpeed,
+    velocityValid: valid,
+  };
 }
 
 function buildIceSide(
@@ -450,29 +520,22 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
     const vy = decodeInt16(velocityBuffer, findField(velocityMeta, 'vy'), vq);
     const speed = new Float32Array(cellCount);
     const velValid = new Uint8Array(cellCount);
+    const velocityHeights = new Float32Array(cellCount);
     for (let i = 0; i < cellCount; i++) {
       if (Number.isFinite(vx[i]) && Number.isFinite(vy[i]) && iceValid[i]) {
         speed[i] = Math.sqrt(vx[i] * vx[i] + vy[i] * vy[i]);
         velValid[i] = 1;
+        velocityHeights[i] = surface[i] + FLOWLINE_SURFACE_OFFSET_M;
+      } else {
+        velocityHeights[i] = NaN;
       }
     }
 
-    // Build velocity mesh (same geometry as ice surface, slightly offset handled in component)
-    const velResult = buildSurface(
+    const velResult = buildVelocitySurface(
       nx, ny, dx_m, dy_m, hScale, vScale,
-      surface, velValid,
-      () => [0, 0, 0] as RGB, // placeholder, will be overwritten
+      velocityHeights, velValid,
+      vx, vy, speed,
     );
-
-    // Override colors with velocity palette
-    for (let i = 0; i < cellCount; i++) {
-      if (velValid[i]) {
-        const rgb = velocityColor(speed[i]);
-        velResult.colors[3 * i] = Math.round(rgb[0] * 255);
-        velResult.colors[3 * i + 1] = Math.round(rgb[1] * 255);
-        velResult.colors[3 * i + 2] = Math.round(rgb[2] * 255);
-      }
-    }
 
     self.postMessage({ type: 'progress', stage: 'Finalizing...', progress: 0.9 });
 
@@ -483,6 +546,8 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
       vScale,
       nx, ny,
       surface,
+      bedHeights: bed,
+      thicknessData: thickness,
       bed: {
         positions: bedResult.positions,
         colors: bedResult.colors,
@@ -506,13 +571,20 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
       velocity: {
         positions: velResult.positions,
         colors: velResult.colors,
+        uvs: velResult.uvs,
         indices: velResult.indices,
+        velocityX: velResult.velocityX,
+        velocityY: velResult.velocityY,
+        velocitySpeed: velResult.velocitySpeed,
+        velocityValid: velResult.velocityValid,
       },
     };
 
     self.postMessage(result, {
       transfer: [
       result.surface.buffer,
+      result.bedHeights.buffer,
+      result.thicknessData.buffer,
       result.bed.positions.buffer,
       result.bed.colors.buffer,
       result.bed.indices.buffer,
@@ -527,7 +599,12 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
       result.iceBottom.indices.buffer,
       result.velocity.positions.buffer,
       result.velocity.colors.buffer,
+      result.velocity.uvs.buffer,
       result.velocity.indices.buffer,
+      result.velocity.velocityX.buffer,
+      result.velocity.velocityY.buffer,
+      result.velocity.velocitySpeed.buffer,
+      result.velocity.velocityValid.buffer,
       ] as Transferable[],
     });
   } catch (err) {

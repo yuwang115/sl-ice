@@ -5,6 +5,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useUIStore } from '../../store/ui-store';
+import IceProfileSilhouette from './IceProfileSilhouette';
 
 export interface FlowlineCatalogEntry {
   id: string;
@@ -245,6 +246,17 @@ export default function FlowlineListPanel({
                   <p className="text-[11px] leading-relaxed mb-2 ml-4" style={{ color: 'var(--text-secondary)' }}>
                     {isZh ? fl.description_zh : fl.description_en}
                   </p>
+
+                  {/* Ice cross-section silhouette */}
+                  <div className="mb-2 ml-4">
+                    <p className="font-data text-[8px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
+                      {isZh ? '侧剖面剪影' : 'Profile Silhouette'}
+                    </p>
+                    <IceProfileSilhouette flowline={fl} width={272} height={88} />
+                    <p className="text-[8px] mt-0.5" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>
+                      {isZh ? '沿流线采样的冰面与基岩剖面' : 'Surface and ice base sampled along the flowline'}
+                    </p>
+                  </div>
 
                   {/* Stats */}
                   <div className="grid grid-cols-2 gap-1.5 mb-2 ml-4">

@@ -3,6 +3,7 @@
  */
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 type Language = 'en' | 'zh';
 type Theme = 'light' | 'dark';
@@ -48,7 +49,8 @@ interface UIStore {
   setViewport: (offsetX: number, scale: number) => void;
 }
 
-export const useUIStore = create<UIStore>((set) => ({
+export const useUIStore = create<UIStore>()(persist(
+  (set) => ({
   theme: 'light',
   setTheme: (theme) => {
     applyTheme(theme);
@@ -77,7 +79,7 @@ export const useUIStore = create<UIStore>((set) => ({
   setLanguage: (lang) => set({ language: lang }),
   toggleLanguage: () => set((s) => ({ language: s.language === 'en' ? 'zh' : 'en' })),
 
-  sidebarOpen: true,
+  sidebarOpen: typeof window !== 'undefined' ? window.innerWidth >= 768 : true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   dashboardExpanded: false,
   toggleDashboard: () => set((s) => ({ dashboardExpanded: !s.dashboardExpanded })),
@@ -97,4 +99,12 @@ export const useUIStore = create<UIStore>((set) => ({
   viewOffsetX: 0,
   viewScale: 1,
   setViewport: (offsetX, scale) => set({ viewOffsetX: offsetX, viewScale: scale }),
-}));
+}),
+  {
+    name: 'sl-ice-ui',
+    partialize: (state) => ({
+      theme: state.theme,
+      language: state.language,
+    }),
+  },
+));

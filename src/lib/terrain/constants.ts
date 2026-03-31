@@ -27,6 +27,7 @@ export const BED_ELEVATION_MAX = 3_500;  // m
 export const VELOCITY_MIN = 0;       // m/yr
 export const VELOCITY_MAX = 3_000;   // m/yr
 export const VELOCITY_KNEE = 20;     // m/yr  (log-scale knee)
+export const VELOCITY_SURFACE_OPACITY = 0.82;
 
 /** Blue → Cyan → Yellow → Red color stops for velocity. */
 export const VELOCITY_COLOR_STOPS: readonly [number, readonly [number, number, number]][] = [
