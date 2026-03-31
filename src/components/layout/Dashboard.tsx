@@ -52,8 +52,8 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="relative glass-panel border-t px-3 py-3">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+    <div className="relative glass-panel border-t px-3 py-2 flex-shrink-0">
+      <div className="grid grid-cols-2 gap-2">
         <TrendChart
           id="gl-flux-chart"
           title={isZh ? '\u63a5\u5730\u7ebf\u51b0\u901a\u91cf' : 'Grounding Line Ice Flux'}
@@ -75,7 +75,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="mt-3 grid grid-cols-5 gap-1 text-center min-h-[44px]">
+      <div className="mt-2 grid grid-cols-5 gap-1 text-center min-h-[36px]">
         {stats.map(({ label, value, unit, color }, i) => (
           <div
             key={label}
@@ -105,6 +105,21 @@ export default function Dashboard() {
           }}
         >
           <span className="font-data text-[10px] font-medium" style={{ color: 'var(--accent-danger)' }}>MISI</span>
+        </div>
+      )}
+
+      {state.is_mici_active && (
+        <div
+          className="absolute right-16 bottom-2 flex items-center gap-1 px-2 py-0.5 rounded-full animate-pulse"
+          style={{
+            background: 'var(--severity-critical-bg)',
+            border: '1px solid var(--severity-critical-border)',
+          }}
+        >
+          <span className="font-data text-[10px] font-medium" style={{ color: 'var(--accent-warm)' }}>MICI</span>
+          <span className="font-data text-[9px]" style={{ color: 'var(--text-muted)' }}>
+            {state.cliff_height.toFixed(0)}m
+          </span>
         </div>
       )}
     </div>

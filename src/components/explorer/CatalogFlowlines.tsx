@@ -194,8 +194,12 @@ function FlowlineLine({
       if (isTransitioning) return;
 
       const now = Date.now();
-      if (isSelected && now - lastClickRef.current < 500) {
-        // Double-click on selected → start transition with the 3D hit point
+      // Each FlowlineLine has its own lastClickRef, so the time check
+      // naturally scopes to the same flowline. We avoid checking
+      // `isSelected` (a prop) because R3F may not have re-rendered with
+      // the updated prop between rapid clicks, causing the double-click
+      // to be swallowed.
+      if (now - lastClickRef.current < 500) {
         const pt = e.point;
         onActivate(id, [pt.x, pt.y, pt.z]);
       } else {
@@ -203,7 +207,7 @@ function FlowlineLine({
       }
       lastClickRef.current = now;
     },
-    [id, isSelected, isTransitioning, onSelect, onActivate],
+    [id, isTransitioning, onSelect, onActivate],
   );
 
   if (points.length < 2) return null;

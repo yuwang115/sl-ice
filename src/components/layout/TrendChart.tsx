@@ -1,11 +1,11 @@
 import type { PhysicsHistoryPoint } from '../../store/physics-store';
 
 const SVG_WIDTH = 360;
-const SVG_HEIGHT = 164;
+const SVG_HEIGHT = 100;
 const PADDING = {
-  top: 12,
+  top: 8,
   right: 12,
-  bottom: 24,
+  bottom: 20,
   left: 44,
 };
 const MAX_DISPLAY_POINTS = 180;
@@ -138,13 +138,13 @@ export default function TrendChart({
 
   return (
     <section
-      className="rounded-[var(--radius-md)] border px-3 py-2"
+      className="rounded-[var(--radius-md)] border px-3 py-1.5"
       style={{
         background: 'var(--bg-card)',
         borderColor: 'var(--border)',
       }}
     >
-      <div className="mb-2 flex items-start justify-between gap-3">
+      <div className="mb-1 flex items-start justify-between gap-3">
         <div>
           <h3
             className="font-data text-[10px] uppercase tracking-[0.24em]"
@@ -171,8 +171,8 @@ export default function TrendChart({
 
       <svg
         viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-        className="block h-32 w-full sm:h-36"
-        preserveAspectRatio="none"
+        className="block w-full"
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-labelledby={`${id}-title`}
       >
