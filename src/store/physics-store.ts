@@ -56,6 +56,7 @@ interface PhysicsStore {
   initWorker: () => void;
   loadScenario: (config: ScenarioConfig) => void;
   updateParams: (params: Partial<UserParams>) => void;
+  setOverlayFlags: (send2DField: boolean) => void;
   step: (dt?: number, nSteps?: number) => boolean;
   reset: () => void;
   destroyWorker: () => void;
@@ -136,6 +137,16 @@ export const usePhysicsStore = create<PhysicsStore>((set, get) => ({
     worker.postMessage({
       type: 'update_params',
       payload: { params },
+    });
+  },
+
+  setOverlayFlags: (send2DField: boolean) => {
+    const { worker } = get();
+    if (!worker) return;
+
+    worker.postMessage({
+      type: 'update_params',
+      payload: { overlayFlags: { send2DField } },
     });
   },
 

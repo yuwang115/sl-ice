@@ -6,11 +6,19 @@
  */
 
 import { initializeModel, stepPhysics, extractStatePayload } from './physics';
-import type { PhysicsCommand, ModelState, ScenarioConfig, GameEvent } from './types';
+import type { PhysicsCommand, PhysicsStatePayload, ModelState, ScenarioConfig, GameEvent } from './types';
+
+/** Attach 2D velocity field to payload when overlays are active. */
+function attachOverlayData(payload: PhysicsStatePayload, state: ModelState): void {
+  if (sendOverlayData) {
+    payload.u_2d = new Float64Array(state.u);
+  }
+}
 
 let modelState: ModelState | null = null;
 let scenarioConfig: ScenarioConfig | null = null;
 let accumulatedEvents: GameEvent[] = [];
+let sendOverlayData = false;
 
 /**
  * Handle incoming messages from the main thread.
@@ -31,6 +39,7 @@ self.onmessage = (event: MessageEvent<PhysicsCommand>) => {
       // Send initial state
       const statePayload = extractStatePayload(modelState);
       statePayload.events = [];
+      attachOverlayData(statePayload, modelState);
       self.postMessage({ type: 'state_update', payload: statePayload });
       break;
     }
@@ -39,6 +48,9 @@ self.onmessage = (event: MessageEvent<PhysicsCommand>) => {
       if (!modelState) return;
       if (payload.params) {
         modelState.params = { ...modelState.params, ...payload.params };
+      }
+      if (payload.overlayFlags !== undefined) {
+        sendOverlayData = payload.overlayFlags.send2DField;
       }
       break;
     }
@@ -65,6 +77,7 @@ self.onmessage = (event: MessageEvent<PhysicsCommand>) => {
       // Send updated state
       const statePayload = extractStatePayload(modelState);
       statePayload.events = accumulatedEvents;
+      attachOverlayData(statePayload, modelState);
       self.postMessage({ type: 'state_update', payload: statePayload });
       break;
     }
@@ -74,9 +87,10 @@ self.onmessage = (event: MessageEvent<PhysicsCommand>) => {
       modelState = initializeModel(scenarioConfig);
       accumulatedEvents = [];
 
-      const statePayload = extractStatePayload(modelState);
-      statePayload.events = [];
-      self.postMessage({ type: 'state_update', payload: statePayload });
+      const resetPayload = extractStatePayload(modelState);
+      resetPayload.events = [];
+      attachOverlayData(resetPayload, modelState);
+      self.postMessage({ type: 'state_update', payload: resetPayload });
       break;
     }
 

@@ -8,6 +8,8 @@ import { persist } from 'zustand/middleware';
 type Language = 'en' | 'zh';
 type Theme = 'light' | 'dark';
 
+export type OverlayMode = 'none' | 'strain' | 'profiles' | 'isochrones' | 'tracers';
+
 const applyTheme = (theme: Theme) => {
   document.documentElement.dataset.theme = theme;
 };
@@ -47,6 +49,10 @@ interface UIStore {
   viewOffsetX: number;
   viewScale: number;
   setViewport: (offsetX: number, scale: number) => void;
+
+  // Visualization overlays
+  overlayMode: OverlayMode;
+  setOverlayMode: (mode: OverlayMode) => void;
 }
 
 export const useUIStore = create<UIStore>()(persist(
@@ -99,12 +105,16 @@ export const useUIStore = create<UIStore>()(persist(
   viewOffsetX: 0,
   viewScale: 1,
   setViewport: (offsetX, scale) => set({ viewOffsetX: offsetX, viewScale: scale }),
+
+  overlayMode: 'none',
+  setOverlayMode: (mode) => set({ overlayMode: mode }),
 }),
   {
     name: 'sl-ice-ui',
     partialize: (state) => ({
       theme: state.theme,
       language: state.language,
+      overlayMode: state.overlayMode,
     }),
   },
 ));

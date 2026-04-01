@@ -15,8 +15,10 @@ import { drawSnowfall, resetSnowfall } from './particles/snowfall';
 import { drawWaterFlow, resetWaterFlow } from './particles/water-flow';
 import { drawOceanCurrent, resetOceanCurrent } from './particles/ocean-current';
 import { drawCalving, resetCalving, triggerCalving } from './particles/calving';
+import { drawStrainRateHeatmap, drawVelocityProfiles, drawIsochrones, drawTracerParticles, resetTracerParticles } from './draw-internal-flow';
 import { getShakeOffset } from './effects/screen-shake';
 import { drawGlow } from './effects/pulse-glow';
+import type { OverlayMode } from '../store/ui-store';
 
 export default function IceSheetCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -27,10 +29,12 @@ export default function IceSheetCanvas() {
   const xPositionCacheRef = useRef<{ key: string; positions: Float64Array } | null>(null);
   const prevIceFrontRef = useRef<number>(-1);
   const lastCalvingSpawnRef = useRef<number>(0);
+  const overlayModeRef = useRef<OverlayMode>('none');
 
   const physicsState = usePhysicsStore((s) => s.state);
   const scenario = usePhysicsStore((s) => s.scenario);
   const setCanvasSize = useUIStore((s) => s.setCanvasSize);
+  const overlayMode = useUIStore((s) => s.overlayMode);
   const params = useGameStore((s) => s.params);
 
   useEffect(() => {
@@ -44,6 +48,10 @@ export default function IceSheetCanvas() {
   useEffect(() => {
     paramsRef.current = params;
   }, [params]);
+
+  useEffect(() => {
+    overlayModeRef.current = overlayMode;
+  }, [overlayMode]);
 
   // Resize handler
   useEffect(() => {
@@ -166,6 +174,27 @@ export default function IceSheetCanvas() {
     drawOcean(dc, b, xPositions);
     drawBedrock(dc, b, xPositions);
     drawIce(dc, H, s, ice_base, is_floating, xPositions, gl_pos_m);
+
+    // ── Internal flow overlays ──
+    const currentOverlay = overlayModeRef.current;
+    if (currentOverlay !== 'none' && physicsState.u_2d) {
+      const { u_2d, nz: pNz, dsigma: pDsigma } = physicsState;
+      switch (currentOverlay) {
+        case 'strain':
+          drawStrainRateHeatmap(dc, u_2d, H, ice_base, xPositions, nx, pNz, pDsigma);
+          break;
+        case 'profiles':
+          drawVelocityProfiles(dc, u_2d, H, s, ice_base, xPositions, nx, pNz, pDsigma);
+          break;
+        case 'isochrones':
+          drawIsochrones(dc, u_2d, H, s, ice_base, xPositions, nx, pNz, pDsigma);
+          break;
+        case 'tracers':
+          drawTracerParticles(dc, u_2d, H, s, ice_base, xPositions, nx, pNz, pDsigma);
+          break;
+      }
+    }
+
     drawGroundingLine(dc, gl_pos_m, b, xPositions);
     drawVelocityArrows(dc, u_surface, s, H, xPositions);
 
@@ -226,6 +255,7 @@ export default function IceSheetCanvas() {
       resetWaterFlow();
       resetOceanCurrent();
       resetCalving();
+      resetTracerParticles();
     };
   }, [render]);
 

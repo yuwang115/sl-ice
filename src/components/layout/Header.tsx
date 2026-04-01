@@ -5,6 +5,7 @@
 import { useGameStore } from '../../store/game-store';
 import { useUIStore } from '../../store/ui-store';
 import PlaybackControls from '../controls/PlaybackControls';
+import OverlayControls from '../controls/OverlayControls';
 import ThemeToggle from '../controls/ThemeToggle';
 import type { GameMode } from '../../engine/types';
 
@@ -75,8 +76,12 @@ export default function Header() {
         </nav>
       )}
 
-      {/* Right: playback + theme + language */}
+      {/* Right: overlays + playback + theme + language */}
       <div className="flex items-center gap-2">
+        {mode !== 'menu' && (mode !== 'explorer' || selectedFlowline) && <OverlayControls />}
+        {mode !== 'menu' && (mode !== 'explorer' || selectedFlowline) && (
+          <div className="w-px h-4" style={{ background: 'var(--border)' }} />
+        )}
         {mode !== 'menu' && <PlaybackControls />}
         <ThemeToggle />
         <button onClick={toggleLanguage} className="pill-btn text-[11px]">

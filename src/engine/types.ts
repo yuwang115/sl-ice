@@ -11,6 +11,7 @@ export interface PhysicsCommand {
     params?: UserParams;
     dt?: number;
     nSteps?: number;
+    overlayFlags?: { send2DField: boolean };
   };
 }
 
@@ -54,6 +55,12 @@ export interface PhysicsStatePayload {
   events: GameEvent[];       // Triggered game events
   smb: Float64Array;         // Surface mass balance profile (m/yr)
   u_depth_avg: Float64Array; // Depth-averaged velocity (m/yr)
+
+  // 2D fields for visualization overlays (only populated when overlays active)
+  u_2d?: Float64Array;       // Full 2D velocity field (nx * nz), row-major
+  nx: number;                // Horizontal grid size
+  nz: number;                // Vertical sigma layers
+  dsigma: number;            // Vertical sigma spacing
 }
 
 export interface GameEvent {

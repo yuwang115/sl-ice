@@ -508,5 +508,8 @@ export function extractStatePayload(state: ModelState): PhysicsStatePayload {
     events: [],
     smb: new Float64Array(state.smb),
     u_depth_avg: new Float64Array(state.u_depth_avg),
+    nx: state.grid.nx,
+    nz: state.grid.nz,
+    dsigma: state.grid.dsigma,
   };
 }
