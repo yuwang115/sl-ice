@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { invertBasalFriction } from '../../src/engine/inversion';
-import { C_SLIDING, C_BASAL_MIN, C_BASAL_MAX, RHO_ICE, RHO_WATER } from '../../src/engine/constants';
+import { C_BASAL_MIN, C_BASAL_MAX, RHO_ICE, RHO_WATER } from '../../src/engine/constants';
 import type { ModelState, ModelGrid } from '../../src/engine/types';
 
 /** Helper: create a minimal model state for inversion tests. */
