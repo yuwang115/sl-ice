@@ -62,6 +62,23 @@ export const SLIDING_M = 1 / 3;
 /** Effective pressure exponent q */
 export const SLIDING_Q = 1;
 
+// ─── Basal Friction Inversion ──────────────────────────────────
+
+/** Minimum allowed inverted basal friction coefficient */
+export const C_BASAL_MIN = 1e3;
+
+/** Maximum allowed inverted basal friction coefficient */
+export const C_BASAL_MAX = 1e9;
+
+/** Inversion damping exponent (0 < α < 1; smaller = more damping) */
+export const INVERSION_ALPHA = 0.5;
+
+/** Maximum inversion outer iterations */
+export const INVERSION_MAX_ITER = 15;
+
+/** Inversion convergence tolerance (normalized RMS misfit) */
+export const INVERSION_TOL = 0.05;
+
 // ─── Surface Mass Balance ───────────────────────────────────────
 
 /** Maximum accumulation rate (m/yr ice eq.) */

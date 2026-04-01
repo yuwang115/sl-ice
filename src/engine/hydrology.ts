@@ -39,10 +39,11 @@ import type { ModelGrid, UserParams } from './types';
 function basalMeltProductionWaterEq(
   u_base: number,
   N_eff: number,
+  C_local: number = C_SLIDING,
 ): number {
   // Frictional heating: τ_b * u_b
   const u_b = Math.abs(u_base);
-  const beta = C_SLIDING * Math.pow(u_b + 1e-6, SLIDING_M - 1) * Math.max(N_eff, 0);
+  const beta = C_local * Math.pow(u_b + 1e-6, SLIDING_M - 1) * Math.max(N_eff, 0);
   // The sliding-law coefficient is tuned for the momentum solver rather than
   // direct stress diagnostics, so cap basal shear stress to a realistic range
   // before converting it to frictional heat.
@@ -71,6 +72,7 @@ export function computeGroundedBasalMelt(
   H: Float64Array,
   N_eff: Float64Array,
   is_floating: Uint8Array,
+  C_basal?: Float64Array,
 ): { waterEq: Float64Array; iceEq: Float64Array } {
   const nx = H.length;
   const waterEq = new Float64Array(nx);
@@ -79,7 +81,8 @@ export function computeGroundedBasalMelt(
   for (let i = 0; i < nx; i++) {
     if (is_floating[i] || H[i] < 10) continue;
 
-    const meltWaterEq = basalMeltProductionWaterEq(u_base[i], N_eff[i]);
+    const C_i = C_basal ? C_basal[i] : C_SLIDING;
+    const meltWaterEq = basalMeltProductionWaterEq(u_base[i], N_eff[i], C_i);
     waterEq[i] = meltWaterEq;
     iceEq[i] = meltWaterEq * (RHO_FRESH / RHO_ICE);
   }

@@ -40,7 +40,7 @@ export function solveBP(
   state: ModelState,
   T_atm_base: number,
 ): Float64Array {
-  const { grid, H, b, s, u, smb, N_eff, is_floating, gl_index, gl_position, params } = state;
+  const { grid, H, b, s, u, smb, N_eff, is_floating, params } = state;
   const { nx, nz, dx, dsigma } = grid;
   const n_total = nx * nz;
   const halfBand = nz; // Bandwidth from x-direction coupling
@@ -93,9 +93,9 @@ export function solveBP(
 
         // ── Basal BC (j = 0): sliding law or free slip ──
         if (j === 0) {
-          const frictionFactor = subElementFriction(i, gl_index, gl_position, dx, is_floating);
+          const frictionFactor = subElementFriction(i, H, b, is_floating);
 
-          if (frictionFactor < 1e-6 || is_floating[i]) {
+          if (is_floating[i] || frictionFactor < 1e-6) {
             // Free slip (floating or no friction): du/dσ = 0
             bandSet(mat, k, k, 1.0);
             if (nz > 1) {
@@ -108,7 +108,8 @@ export function solveBP(
             // where β = C * |u_b|^(m-1) * N^q * frictionFactor
             const u_b = Math.abs(u_current[k]) + 1e-6; // Regularize
             const N = Math.max(N_eff[i], 0);
-            const beta = C_SLIDING * Math.pow(u_b, SLIDING_M - 1) * N * frictionFactor;
+            const C_i = state.C_basal ? state.C_basal[i] : C_SLIDING;
+            const beta = C_i * Math.pow(u_b, SLIDING_M - 1) * N * frictionFactor;
 
             const eta_b = eta[k];
             const viscTerm = eta_b / (H[i] * dsigma);

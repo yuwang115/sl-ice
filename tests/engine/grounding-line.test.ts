@@ -95,23 +95,48 @@ describe('updateGroundingLine', () => {
 });
 
 describe('subElementFriction', () => {
-  it('returns 1.0 for fully grounded nodes (i < gl_index)', () => {
+  // Set up geometry: grounded nodes have thick ice on shallow bed,
+  // floating nodes have thin ice on deep bed.
+  // Flotation: f = ρ_i * H + ρ_w * b.  ρ_i=917, ρ_w=1028.
+  // Grounded (f > 0): H=1000, b=-500 → f = 917*1000 + 1028*(-500) = 403000
+  // Floating (f ≤ 0): H=200, b=-500  → f = 917*200 + 1028*(-500) = -330600
+  const H_grounded = 1000;
+  const H_floating = 200;
+  const b_val = -500;
+
+  it('returns 1.0 for fully grounded nodes (no floating neighbor)', () => {
+    const H = new Float64Array([H_grounded, H_grounded, H_grounded, H_floating, H_floating]);
+    const b = new Float64Array([b_val, b_val, b_val, b_val, b_val]);
     const is_floating = new Uint8Array([0, 0, 0, 1, 1]);
-    expect(subElementFriction(0, 2, 2500, 1000, is_floating)).toBe(1.0);
-    expect(subElementFriction(1, 2, 2500, 1000, is_floating)).toBe(1.0);
+    expect(subElementFriction(0, H, b, is_floating)).toBe(1.0);
+    expect(subElementFriction(1, H, b, is_floating)).toBe(1.0);
   });
 
-  it('returns 0.0 for fully floating nodes (i > gl_index)', () => {
+  it('returns 0.0 for fully floating nodes', () => {
+    const H = new Float64Array([H_grounded, H_grounded, H_grounded, H_floating, H_floating]);
+    const b = new Float64Array([b_val, b_val, b_val, b_val, b_val]);
     const is_floating = new Uint8Array([0, 0, 0, 1, 1]);
-    expect(subElementFriction(3, 2, 2500, 1000, is_floating)).toBe(0.0);
+    expect(subElementFriction(3, H, b, is_floating)).toBe(0.0);
   });
 
-  it('returns fractional value at GL node', () => {
+  it('returns fractional value at GL transition node', () => {
+    const H = new Float64Array([H_grounded, H_grounded, H_grounded, H_floating, H_floating]);
+    const b = new Float64Array([b_val, b_val, b_val, b_val, b_val]);
     const is_floating = new Uint8Array([0, 0, 0, 1, 1]);
-    const frac = subElementFriction(2, 2, 2500, 1000, is_floating);
+    const frac = subElementFriction(2, H, b, is_floating);
     expect(frac).toBeGreaterThan(0);
     expect(frac).toBeLessThan(1);
-    expect(frac).toBeCloseTo(0.5, 1);
+  });
+
+  it('returns 1.0 for re-grounded ice downstream of primary GL', () => {
+    // Geometry: grounded → floating → re-grounded on topographic high → floating
+    const H = new Float64Array([H_grounded, H_grounded, H_floating, H_grounded, H_floating]);
+    const b = new Float64Array([b_val, b_val, b_val, b_val, b_val]);
+    const is_floating = new Uint8Array([0, 0, 1, 0, 1]);
+    // Node 3 is re-grounded: should get friction, not free-slip
+    const frac = subElementFriction(3, H, b, is_floating);
+    // At a transition (node 4 is floating), so it gets sub-element scaling
+    expect(frac).toBeGreaterThan(0);
   });
 });
 

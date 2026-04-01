@@ -91,35 +91,51 @@ export function updateGroundingLine(
 
 /**
  * Compute sub-element grounding line friction factor.
- * For the last grounded node, friction is scaled by the grounded
- * fraction λ of the partially grounded grid cell.
+ *
+ * For any grounded node adjacent to a floating node (i.e. at a
+ * grounding-line transition), friction is scaled by the grounded
+ * fraction λ of the partially grounded grid cell.  This handles
+ * multiple grounding lines — including re-grounding on topographic
+ * highs (pinning points) — by checking the local flotation
+ * transition rather than relying on a single gl_index.
  *
  * @param i Grid index
- * @param gl_index Grounding line node index
- * @param gl_position Interpolated GL position (m)
+ * @param H Ice thickness array
+ * @param b Bed elevation array
  * @param dx Grid spacing (m)
- * @param is_floating Floating mask for detecting whether a partial cell exists
- * @returns Friction factor (0 = floating, 1 = fully grounded)
+ * @param is_floating Floating mask
+ * @returns Friction factor (0 = floating, 1 = fully grounded,
+ *          0–1 at grounding-line transitions)
  */
 export function subElementFriction(
   i: number,
-  gl_index: number,
-  gl_position: number,
-  dx: number,
+  H: Float64Array,
+  b: Float64Array,
   is_floating: Uint8Array,
 ): number {
-  if (i < gl_index) return 1.0;      // Fully grounded
-  if (i > gl_index) return 0.0;      // Fully floating
+  // Floating → no friction
+  if (is_floating[i]) return 0.0;
 
-  if (gl_index >= is_floating.length - 1 || !is_floating[gl_index + 1]) {
-    // No floating node downstream → no partial GL cell on the grid.
-    return 1.0;
+  // Fully grounded with no adjacent floating node → full friction
+  const nx = is_floating.length;
+  const hasFloatingNeighbor =
+    (i < nx - 1 && is_floating[i + 1]) ||
+    (i > 0 && is_floating[i - 1]);
+
+  if (!hasFloatingNeighbor) return 1.0;
+
+  // At a grounding-to-floating transition: interpolate the grounded
+  // fraction using the flotation function on the downstream side.
+  if (i < nx - 1 && is_floating[i + 1]) {
+    const f_i = flotationFunction(H[i], b[i]);
+    const f_ip1 = flotationFunction(H[i + 1], b[i + 1]);
+    if (Math.abs(f_ip1 - f_i) > 1e-10) {
+      const lambda = -f_i / (f_ip1 - f_i);
+      return Math.max(0, Math.min(1, lambda));
+    }
   }
 
-  // i === gl_index: scale basal traction by the grounded fraction.
-  const cellStart = gl_index * dx;
-  const lambda = (gl_position - cellStart) / dx;
-  return Math.max(0, Math.min(1, lambda));
+  return 1.0;
 }
 
 /**

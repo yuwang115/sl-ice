@@ -146,6 +146,9 @@ export interface ModelState {
   N_eff: Float64Array;       // Effective pressure (Pa)
   W: Float64Array;           // Normalized subglacial water (0-1)
 
+  // Basal friction (from inversion, if available)
+  C_basal?: Float64Array;    // Inverted basal friction coefficient C(x) (Pa m^{-1/3} s^{1/3})
+
   // 2D velocity field (nx × nz), row-major: u[i * nz + j]
   u: Float64Array;
 

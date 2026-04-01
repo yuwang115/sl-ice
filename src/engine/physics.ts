@@ -26,6 +26,7 @@ import {
 import {
   evolveHydrology, computeEffectivePressure, computeGroundedBasalMelt,
 } from './hydrology';
+import { invertBasalFriction } from './inversion';
 import type {
   ModelState, ModelGrid, ScenarioConfig, UserParams,
   PhysicsStatePayload, GameEvent,
@@ -239,6 +240,33 @@ export function initializeModel(config: ScenarioConfig): ModelState {
     params,
   };
 
+  // Basal friction inversion from observed velocity data
+  if (config.geometry?.points) {
+    const geoPts = config.geometry.points;
+    const observedSpeed = new Float64Array(nx);
+
+    // Interpolate observed speed from geometry points to model grid
+    if (geoPts.length === nx) {
+      for (let i = 0; i < nx; i++) {
+        observedSpeed[i] = geoPts[i].speed_m_per_yr;
+      }
+    } else if (geoPts.length > 1) {
+      for (let i = 0; i < nx; i++) {
+        const t = i / (nx - 1);
+        const srcIdx = t * (geoPts.length - 1);
+        const lo = Math.floor(srcIdx);
+        const hi = Math.min(lo + 1, geoPts.length - 1);
+        const frac = srcIdx - lo;
+        observedSpeed[i] = geoPts[lo].speed_m_per_yr * (1 - frac)
+                         + geoPts[hi].speed_m_per_yr * frac;
+      }
+    }
+
+    if (observedSpeed.some(v => v > 0)) {
+      state.C_basal = invertBasalFriction(state, observedSpeed, config.T_atm_base);
+    }
+  }
+
   return state;
 }
 
@@ -266,7 +294,7 @@ export function stepPhysics(
 
   const u_base = basalVelocity(state.u, nx, nz);
   const groundedBasalMelt = computeGroundedBasalMelt(
-    u_base, state.H, state.N_eff, state.is_floating,
+    u_base, state.H, state.N_eff, state.is_floating, state.C_basal,
   );
 
   // Hydrology
