@@ -22,6 +22,7 @@ interface TrendChartProps {
   valueKey: TrendMetricKey;
   format: TrendFormat;
   includeZeroBaseline?: boolean;
+  className?: string;
 }
 
 function downsampleHistory(history: PhysicsHistoryPoint[], maxPoints: number): PhysicsHistoryPoint[] {
@@ -92,6 +93,7 @@ export default function TrendChart({
   valueKey,
   format,
   includeZeroBaseline = false,
+  className = '',
 }: TrendChartProps) {
   const sampledHistory = downsampleHistory(history, MAX_DISPLAY_POINTS);
   const latestPoint = history[history.length - 1];
@@ -138,7 +140,7 @@ export default function TrendChart({
 
   return (
     <section
-      className="rounded-[var(--radius-md)] border px-3 py-1.5"
+      className={`rounded-[var(--radius-md)] border px-3 py-2 flex h-full min-h-0 flex-col ${className}`}
       style={{
         background: 'var(--bg-card)',
         borderColor: 'var(--border)',
@@ -171,8 +173,8 @@ export default function TrendChart({
 
       <svg
         viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-        className="block w-full"
-        preserveAspectRatio="xMidYMid meet"
+        className="block w-full flex-1 min-h-[120px]"
+        preserveAspectRatio="none"
         role="img"
         aria-labelledby={`${id}-title`}
       >

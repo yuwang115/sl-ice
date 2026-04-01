@@ -173,6 +173,7 @@ function App() {
         {/* Canvas area */}
         <main className="flex-1 relative min-w-0 overflow-hidden" role="main" aria-label="Ice sheet simulation">
           <IceSheetCanvas />
+          <Dashboard />
           <InfoBubble />
 
           {/* Challenge overlay */}
@@ -182,8 +183,6 @@ function App() {
         {/* Sidebar */}
         <Sidebar />
       </div>
-
-      <Dashboard />
     </div>
   );
 }
