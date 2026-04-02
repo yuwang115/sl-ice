@@ -8,6 +8,48 @@ import { useUIStore } from '../../store/ui-store';
 import ThemeToggle from '../controls/ThemeToggle';
 import type { GameMode } from '../../engine/types';
 
+/* ─── Mode Card Icons ───────────────────────────────────── */
+const IconBeaker = () => (
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4.5 3h15" />
+    <path d="M6 3v16a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3" />
+    <path d="M6 14h12" />
+  </svg>
+);
+
+const IconTrophy = () => (
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+    <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+    <path d="M4 22h16" />
+    <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+    <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+    <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+  </svg>
+);
+
+const IconGlobe = () => (
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+    <path d="M2 12h20" />
+  </svg>
+);
+
+const IconCompass = () => (
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+  </svg>
+);
+
+const modeIcons: Record<string, () => JSX.Element> = {
+  sandbox: IconBeaker,
+  challenge: IconTrophy,
+  real_world: IconGlobe,
+  explorer: IconCompass,
+};
+
 export default function ModeSelector() {
   const setMode = useGameStore((s) => s.setMode);
   const language = useUIStore((s) => s.language);
@@ -60,8 +102,8 @@ export default function ModeSelector() {
       key: 'challenge',
       title: 'Challenges',
       titleZh: '\u6311\u6218\u5173\u5361',
-      desc: '7 levels, each teaching a key concept: mass balance, MISI, buttressing, hydrology, and more.',
-      descZh: '7\u4e2a\u5173\u5361\uff0c\u6bcf\u4e2a\u805a\u7126\u4e00\u4e2a\u5173\u952e\u6982\u5ff5\uff1a\u8d28\u91cf\u5e73\u8861\u3001MISI\u3001\u652f\u6491\u6548\u5e94\u3001\u6c34\u6587\u7b49\u3002',
+      desc: '8 levels, each teaching a key concept: mass balance, MISI, buttressing, hydrology, and more.',
+      descZh: '8\u4e2a\u5173\u5361\uff0c\u6bcf\u4e2a\u805a\u7126\u4e00\u4e2a\u5173\u952e\u6982\u5ff5\uff1a\u8d28\u91cf\u5e73\u8861\u3001MISI\u3001\u652f\u6491\u6548\u5e94\u3001\u6c34\u6587\u7b49\u3002',
       variant: 'amber',
     },
     {
@@ -82,11 +124,11 @@ export default function ModeSelector() {
     },
   ];
 
-  const variantStyles: Record<string, { bg: string; border: string }> = {
-    blue: { bg: 'var(--card-accent-blue)', border: 'var(--card-border-blue)' },
-    amber: { bg: 'var(--card-accent-amber)', border: 'var(--card-border-amber)' },
-    teal: { bg: 'var(--card-accent-teal)', border: 'var(--card-border-teal)' },
-    purple: { bg: 'var(--card-accent-purple)', border: 'var(--card-border-purple)' },
+  const variantStyles: Record<string, { bg: string; border: string; glow: string }> = {
+    blue: { bg: 'var(--card-accent-blue)', border: 'var(--card-border-blue)', glow: 'rgba(74, 144, 168, 0.25)' },
+    amber: { bg: 'var(--card-accent-amber)', border: 'var(--card-border-amber)', glow: 'rgba(212, 133, 58, 0.25)' },
+    teal: { bg: 'var(--card-accent-teal)', border: 'var(--card-border-teal)', glow: 'rgba(61, 139, 110, 0.25)' },
+    purple: { bg: 'var(--card-accent-purple)', border: 'var(--card-border-purple)', glow: 'rgba(139, 92, 196, 0.25)' },
   };
 
   return (
@@ -121,16 +163,31 @@ export default function ModeSelector() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 max-w-5xl w-full">
         {modes.map(({ key, title, titleZh, desc, descZh, variant }) => {
           const vs = variantStyles[variant];
+          const Icon = modeIcons[key];
           return (
             <button
               key={key}
               onClick={() => setMode(key)}
-              className="glass-card group text-left p-6"
+              className="glass-card group text-left p-6 transition-shadow"
               style={{
                 background: vs.bg,
                 borderColor: vs.border,
               }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.boxShadow = `0 0 28px ${vs.glow}, var(--shadow-md)`;
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.boxShadow = '';
+              }}
             >
+              {Icon && (
+                <div
+                  className="mb-3 opacity-50 group-hover:opacity-80 transition-opacity"
+                  style={{ color: vs.border }}
+                >
+                  <Icon />
+                </div>
+              )}
               <h2 className="text-lg font-semibold mb-2 group-hover:text-[var(--accent)] transition-colors" style={{ color: 'var(--text-primary)' }}>
                 {isZh ? titleZh : title}
               </h2>

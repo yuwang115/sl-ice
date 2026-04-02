@@ -65,14 +65,12 @@ describe('bandSolve', () => {
     expect(x[2]).toBeCloseTo(4);
   });
 
-  it('solves a tridiagonal system (known limitation: no pivoting)', () => {
-    // The banded solver uses LU without pivoting, which can produce
-    // inaccurate results for some tridiagonal systems. This test documents
-    // the behavior and verifies it doesn't crash.
+  it('solves a tridiagonal system correctly with partial pivoting', () => {
     // [2 -1  0] [x0]   [1]
     // [-1 2 -1] [x1] = [0]
     // [0 -1  2] [x2]   [1]
-    // Exact solution: x = [0.75, 0.5, 0.75]
+    // Exact solution: x = [1, 1, 1]
+    // (verify: 2*1 - 1 = 1, -1 + 2 - 1 = 0, -1 + 2 = 1)
     const mat = createBandedMatrix(3, 1);
     bandSet(mat, 0, 0, 2); bandSet(mat, 0, 1, -1);
     bandSet(mat, 1, 0, -1); bandSet(mat, 1, 1, 2); bandSet(mat, 1, 2, -1);
@@ -81,10 +79,35 @@ describe('bandSolve', () => {
     const rhs = new Float64Array([1, 0, 1]);
     const x = bandSolve(mat, rhs);
 
-    // Verify solution is finite (solver doesn't crash)
-    for (let i = 0; i < 3; i++) {
-      expect(Number.isFinite(x[i])).toBe(true);
-    }
+    expect(x[0]).toBeCloseTo(1.0, 10);
+    expect(x[1]).toBeCloseTo(1.0, 10);
+    expect(x[2]).toBeCloseTo(1.0, 10);
+  });
+
+  it('solves a system where pivoting is needed for accuracy', () => {
+    // Small pivot on diagonal — without pivoting this would amplify error.
+    // [1e-10  1] [x0]   [1]
+    // [1      1] [x1] = [2]
+    // Exact: x1 = (2 - 1/1e-10) / (1 - 1/1e-10) ≈ 1, x0 ≈ 1e10*(1-1) = 0...
+    // More precisely: x1 = (2*1e-10 - 1) / (1e-10 - 1) ≈ 1.0, x0 = (1 - x1)/1e-10 ≈ 0
+    // Exact solution: x0 = 1 / (1 - 1e-10) ≈ 1.0, x1 = 1 / (1 - 1e-10) ≈ 1.0
+    // Let me use a clearer system:
+    // [1e-15   1] [x0]   [1]
+    // [1       1] [x1]   [2]
+    // det = 1e-15 - 1 ≈ -1
+    // x0 = (1 - 2) / (1e-15 - 1) = 1 / (1 - 1e-15) ≈ 1
+    // x1 = (2*1e-15 - 1) / (1e-15 - 1) ≈ 1
+    const mat = createBandedMatrix(2, 1);
+    bandSet(mat, 0, 0, 1e-15);
+    bandSet(mat, 0, 1, 1);
+    bandSet(mat, 1, 0, 1);
+    bandSet(mat, 1, 1, 1);
+
+    const rhs = new Float64Array([1, 2]);
+    const x = bandSolve(mat, rhs);
+
+    expect(x[0]).toBeCloseTo(1.0, 8);
+    expect(x[1]).toBeCloseTo(1.0, 8);
   });
 
   it('handles near-singular diagonal gracefully', () => {

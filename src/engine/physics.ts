@@ -341,7 +341,7 @@ export function stepPhysics(
   // 4b. Apply MICI cliff calving (opt-in)
   const prevMICIActive = state.is_mici_active;
   if (state.params.enable_mici) {
-    const mici = applyCliffCalving(state, dt);
+    const mici = applyCliffCalving(state, safeDt);
     state.H = mici.H;
     state.cliff_height = mici.cliff_height;
     state.mici_calving_rate = mici.mici_calving_rate;
@@ -362,6 +362,12 @@ export function stepPhysics(
   // 6. Update surface elevation and ice base
   state.s = computeSurfaceElevation(state.H, state.b, state.is_floating);
   state.ice_base = computeIceBase(state.H, state.b, state.is_floating);
+
+  // 6b. Re-solve BP velocity on the updated geometry so that returned
+  //     velocity fields (u, u_depth_avg, gl_flux, gl_velocity) are
+  //     consistent with the current thickness and grounding line.
+  state.u = solveBP(state, config.T_atm_base);
+  state.u_depth_avg = depthAverageVelocity(state.u, nx, nz);
 
   // 7. Update volume and sea level
   const { volume, volumeAboveFlotation } = computeIceVolume(

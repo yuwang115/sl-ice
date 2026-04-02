@@ -1,17 +1,32 @@
 /**
- * Playback controls: play/pause, speed, reset.
+ * Playback controls: play/pause, speed, reset with SVG icons.
  */
 
 import { useGameStore } from '../../store/game-store';
 import { usePhysicsStore } from '../../store/physics-store';
 import type { SimulationSpeed } from '../../engine/types';
 
+/* ─── SVG Icons ─────────────────────────────────────────── */
+const PauseIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+    <rect x="6" y="4" width="4" height="16" rx="1" />
+    <rect x="14" y="4" width="4" height="16" rx="1" />
+  </svg>
+);
+
+const ResetIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+  </svg>
+);
+
 export default function PlaybackControls() {
   const { speed, setSpeed, setRunning } = useGameStore();
   const reset = usePhysicsStore((s) => s.reset);
 
-  const speeds: { key: SimulationSpeed; label: string }[] = [
-    { key: 'paused', label: '\u23f8' },
+  const speeds: { key: SimulationSpeed; label: string | JSX.Element }[] = [
+    { key: 'paused', label: <PauseIcon /> },
     { key: 'normal', label: '1\u00d7' },
     { key: 'fast', label: '2\u00d7' },
     { key: 'ultra', label: '5\u00d7' },
@@ -27,6 +42,7 @@ export default function PlaybackControls() {
             setRunning(key !== 'paused');
           }}
           className={`pill-btn text-[11px] px-2.5 ${speed === key ? 'active' : ''}`}
+          aria-label={key === 'paused' ? 'Pause' : `Speed ${key}`}
         >
           {label}
         </button>
@@ -41,8 +57,9 @@ export default function PlaybackControls() {
           setRunning(false);
         }}
         className="pill-btn text-[11px] px-2.5 hover:!border-[var(--accent-danger)] hover:!text-[var(--accent-danger)]"
+        aria-label="Reset simulation"
       >
-        {'↺'}
+        <ResetIcon />
       </button>
     </div>
   );

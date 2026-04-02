@@ -69,7 +69,7 @@ describe('Dashboard', () => {
 
     expect(scoped.getByRole('img', { name: 'Grounding Line Ice Flux' })).toBeTruthy();
     expect(scoped.getByRole('img', { name: 'Total Ice Mass Change' })).toBeTruthy();
-    expect(scoped.getByRole('button', { name: 'Reset trend window' })).toBeTruthy();
+    expect(scoped.getByRole('button', { name: 'Default position' })).toBeTruthy();
     expect(scoped.getAllByLabelText(/resize trend window/i).length).toBeGreaterThan(0);
   });
 });

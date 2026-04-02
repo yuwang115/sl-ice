@@ -4,13 +4,26 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GameMode, SimulationSpeed, ChallengeStatus, UserParams } from '../engine/types';
+import type { GameMode, SimulationSpeed, ChallengeStatus, UserParams, PhysicsStatePayload } from '../engine/types';
+import { challenges } from '../challenges';
+import { computeScore as computeChallengeScore } from '../engine/scoring';
 
 interface ChallengeProgress {
   id: number;
   status: ChallengeStatus;
   bestScore?: number;
+  bestStars?: number;
   startYear?: number;
+  attempts?: number;
+}
+
+/** Result shown after challenge ends (before returning to list) */
+export interface ChallengeResult {
+  challengeId: number;
+  won: boolean;
+  score: number;
+  stars: number; // 0-3
+  elapsedYears: number;
 }
 
 interface GameStore {
@@ -37,6 +50,16 @@ interface GameStore {
   startChallenge: (id: number) => void;
   completeChallenge: (id: number, won: boolean, score?: number) => void;
   completedChallenges: () => number[];
+
+  // Challenge evaluation state
+  challengeStartYear: number | null;
+  challengeInitialVolume: number | null;
+  challengeResult: ChallengeResult | null;
+  challengeParamChanges: number; // count of parameter adjustments
+  _challengeHysteresisLocked: boolean;
+  evaluateChallenge: (physicsState: PhysicsStatePayload) => void;
+  dismissChallengeResult: () => void;
+  incrementParamChanges: () => void;
 
   // Selected real-world region
   selectedRegion: string | null;
@@ -130,18 +153,24 @@ export const useGameStore = create<GameStore>()(persist(
   startChallenge: (id) =>
     set((s) => ({
       currentChallenge: id,
+      challengeStartYear: null,  // Will be captured from first physics update
+      challengeInitialVolume: null,
+      challengeResult: null,
+      challengeParamChanges: 0,
       challengeProgress: s.challengeProgress.map((c) =>
-        c.id === id ? { ...c, status: 'in_progress' as ChallengeStatus } : c
+        c.id === id ? { ...c, status: 'in_progress' as ChallengeStatus, attempts: (c.attempts || 0) + 1 } : c
       ),
     })),
   completeChallenge: (id, won, score) =>
     set((s) => {
+      const stars = score == null ? 0 : score >= 85 ? 3 : score >= 60 ? 2 : 1;
       const progress = s.challengeProgress.map((c) => {
         if (c.id === id) {
           return {
             ...c,
             status: (won ? 'won' : 'lost') as ChallengeStatus,
             bestScore: score != null ? Math.max(score, c.bestScore || 0) : c.bestScore,
+            bestStars: won ? Math.max(stars, c.bestStars || 0) : c.bestStars,
           };
         }
         return c;
@@ -160,12 +189,83 @@ export const useGameStore = create<GameStore>()(persist(
           progress[idx] = { ...progress[idx], status: 'available' };
         }
       }
-      return { challengeProgress: progress, currentChallenge: null };
+      return { challengeProgress: progress };
     }),
   completedChallenges: () =>
     get()
       .challengeProgress.filter((c) => c.status === 'won')
       .map((c) => c.id),
+
+  // Challenge evaluation
+  challengeStartYear: null,
+  challengeInitialVolume: null,
+  challengeResult: null,
+  challengeParamChanges: 0,
+  _challengeHysteresisLocked: false,
+  incrementParamChanges: () => set((s) => ({ challengeParamChanges: s.challengeParamChanges + 1 })),
+
+  evaluateChallenge: (physicsState) => {
+    const s = get();
+    if (!s.currentChallenge || s.challengeResult) return;
+
+    const challenge = challenges.find((c) => c.id === s.currentChallenge);
+    if (!challenge) return;
+
+    // Capture initial state from first physics update
+    const startYear = s.challengeStartYear;
+    const initialVolume = s.challengeInitialVolume;
+    if (startYear === null || initialVolume === null) {
+      set({ challengeStartYear: physicsState.year, challengeInitialVolume: physicsState.volume });
+      return; // Skip evaluation on first frame
+    }
+
+    const elapsed = physicsState.year - startYear;
+
+    // Track hysteresis_locked persistently across frames
+    let hysteresisLocked = s._challengeHysteresisLocked;
+    if (!hysteresisLocked && physicsState.events.some((e) => e.type === 'hysteresis_locked')) {
+      hysteresisLocked = true;
+      set({ _challengeHysteresisLocked: true });
+    }
+
+    // Build a lightweight state adapter compatible with check_win/check_lose
+    const stateAdapter = {
+      volume: physicsState.volume,
+      initial_volume: initialVolume,
+      sea_level: physicsState.sea_level,
+      is_misi_active: physicsState.is_misi_active,
+      hysteresis_locked: hysteresisLocked,
+      is_mici_active: physicsState.is_mici_active,
+      cliff_height: physicsState.cliff_height,
+      mici_calving_rate: physicsState.mici_calving_rate,
+      shelf_exists: physicsState.shelf_exists,
+    };
+
+    // Check win/lose
+    const won = challenge.check_win(stateAdapter as never, elapsed);
+    const lost = challenge.check_lose(stateAdapter as never, elapsed);
+
+    if (won || lost) {
+      const score = won ? computeChallengeScore(challenge, physicsState, initialVolume, elapsed, s.challengeParamChanges) : 0;
+      const stars = score >= 85 ? 3 : score >= 60 ? 2 : score > 0 ? 1 : 0;
+
+      set({
+        challengeResult: {
+          challengeId: s.currentChallenge!,
+          won,
+          score,
+          stars,
+          elapsedYears: Math.round(elapsed),
+        },
+        isRunning: false,
+      });
+
+      // Persist to progress
+      get().completeChallenge(s.currentChallenge!, won, won ? score : undefined);
+    }
+  },
+
+  dismissChallengeResult: () => set({ challengeResult: null, currentChallenge: null }),
 
   selectedRegion: null,
   selectRegion: (region) => set({ selectedRegion: region }),
@@ -190,6 +290,6 @@ export const useGameStore = create<GameStore>()(persist(
     name: 'sl-ice-game',
     partialize: (state) => ({
       challengeProgress: state.challengeProgress,
-    }),
+    } as Partial<GameStore>),
   },
 ));

@@ -15,7 +15,12 @@ import ChallengePanel from './components/game/ChallengePanel';
 import RealWorldSelector from './components/game/RealWorldSelector';
 import IceSheetCanvas from './renderer/IceSheetCanvas';
 import InfoBubble from './components/education/InfoBubble';
+import QuizPopup from './components/education/QuizPopup';
 import TransitionOverlay from './components/explorer/TransitionOverlay';
+import HintPanel from './components/game/HintPanel';
+import AchievementToast from './components/game/AchievementToast';
+import { PageSkeleton } from './components/ui/Skeleton';
+import { useAchievementChecker } from './hooks/useAchievementChecker';
 
 /** Fetch with retry (exponential backoff) */
 async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
@@ -36,6 +41,9 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
 const AntarcticaExplorer = lazy(() => import('./components/game/AntarcticaExplorer'));
 
 function App() {
+  // Achievement tracking
+  useAchievementChecker();
+
   // Initialize theme from system preference
   const initTheme = useUIStore((s) => s.initTheme);
   const themeInitedRef = useRef(false);
@@ -99,6 +107,28 @@ function App() {
     }
   }, [params, isInitialized, updateParams]);
 
+  // Challenge evaluation: subscribe to physics state updates
+  const evaluateChallenge = useGameStore((s) => s.evaluateChallenge);
+  const evaluateChallengeRef = useRef(evaluateChallenge);
+  useEffect(() => { evaluateChallengeRef.current = evaluateChallenge; }, [evaluateChallenge]);
+
+  const physicsState = usePhysicsStore((s) => s.state);
+  useEffect(() => {
+    if (physicsState && currentChallenge) {
+      evaluateChallengeRef.current(physicsState);
+    }
+  }, [physicsState, currentChallenge]);
+
+  // Track parameter changes during challenges
+  const incrementParamChanges = useGameStore((s) => s.incrementParamChanges);
+  const prevParamsRef = useRef(params);
+  useEffect(() => {
+    if (currentChallenge && prevParamsRef.current !== params) {
+      incrementParamChanges();
+    }
+    prevParamsRef.current = params;
+  }, [params, currentChallenge, incrementParamChanges]);
+
   // Game loop using refs to avoid stale closures
   const isRunningRef = useRef(isRunning);
   const isInitializedRef = useRef(isInitialized);
@@ -137,8 +167,14 @@ function App() {
   // Global transition overlay (persists across explorer → simulation unmount)
   const transitionOverlay = <TransitionOverlay />;
 
-  // Challenge selection (not yet started)
-  if (mode === 'challenge' && !currentChallenge) {
+  const challengeResult = useGameStore((s) => s.challengeResult);
+
+  // Challenge selection (not yet started) or result screen
+  if (mode === 'challenge' && !currentChallenge && !challengeResult) {
+    return <ChallengePanel />;
+  }
+  // Challenge result overlay (full-screen)
+  if (challengeResult) {
     return <ChallengePanel />;
   }
 
@@ -152,11 +188,7 @@ function App() {
     return (
       <>
         {transitionOverlay}
-        <Suspense fallback={
-          <div className="flex items-center justify-center h-full" style={{ color: 'var(--text-muted)' }}>
-            <span className="animate-glow">Loading Explorer...</span>
-          </div>
-        }>
+        <Suspense fallback={<PageSkeleton />}>
           <AntarcticaExplorer />
         </Suspense>
       </>
@@ -167,6 +199,7 @@ function App() {
   return (
     <div className="h-screen flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
       {transitionOverlay}
+      <AchievementToast />
       <Header />
 
       <div className="flex-1 flex min-h-0">
@@ -177,7 +210,13 @@ function App() {
           <InfoBubble />
 
           {/* Challenge overlay */}
-          {mode === 'challenge' && currentChallenge && <ChallengePanel />}
+          {mode === 'challenge' && currentChallenge && (
+            <>
+              <ChallengePanel />
+              <HintPanel />
+              <QuizPopup />
+            </>
+          )}
         </main>
 
         {/* Sidebar */}

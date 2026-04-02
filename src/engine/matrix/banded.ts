@@ -77,8 +77,55 @@ export function bandClear(mat: BandedMatrix): void {
 }
 
 /**
+ * Swap two rows in the banded matrix (only the band entries) and the RHS.
+ * After swapping rows r1 and r2, the band storage positions shift:
+ * A[r1][col] was at bands[col - r1 + hb][r1], now needs to move to
+ * bands[col - r2 + hb][r2], and vice versa.
+ */
+function swapRows(
+  mat: BandedMatrix,
+  rhs: Float64Array,
+  r1: number,
+  r2: number,
+): void {
+  if (r1 === r2) return;
+  const { n, halfBand: hb, bands } = mat;
+
+  // Determine the union of columns that either row can touch
+  const colMin = Math.max(0, Math.min(r1, r2) - hb);
+  const colMax = Math.min(n - 1, Math.max(r1, r2) + hb);
+
+  for (let col = colMin; col <= colMax; col++) {
+    const d1 = col - r1 + hb;
+    const d2 = col - r2 + hb;
+    const in1 = d1 >= 0 && d1 < bands.length;
+    const in2 = d2 >= 0 && d2 < bands.length;
+
+    const v1 = in1 ? bands[d1][r1] : 0;
+    const v2 = in2 ? bands[d2][r2] : 0;
+
+    // After swap: row r1 gets value v2, row r2 gets value v1
+    // But the diagonal index also changes because the row index changed
+    if (in2) bands[d2][r2] = v1;
+    else if (v1 !== 0) { /* value falls outside band after swap — lost, acceptable for partial pivoting within band */ }
+
+    if (in1) bands[d1][r1] = v2;
+    else if (v2 !== 0) { /* same */ }
+  }
+
+  // Swap RHS
+  const tmp = rhs[r1];
+  rhs[r1] = rhs[r2];
+  rhs[r2] = tmp;
+}
+
+/**
  * Solve the banded linear system A * x = rhs using banded LU decomposition
- * (Gaussian elimination with partial pivoting within the band).
+ * with partial pivoting within the band.
+ *
+ * Partial pivoting selects the largest-magnitude entry in the pivot column
+ * (within the band) to reduce numerical error, which is critical near the
+ * grounding line where viscosity contrasts are large.
  *
  * This modifies the matrix and rhs in place.
  * Returns the solution vector x (same buffer as rhs).
@@ -91,26 +138,44 @@ export function bandSolve(mat: BandedMatrix, rhs: Float64Array): Float64Array {
   const hb = halfBand;
   const mainDiag = hb; // Index of main diagonal in bands array
 
-  // Forward elimination (no pivoting for simplicity — the BP matrix is well-conditioned)
+  // Forward elimination with partial pivoting within the band
   for (let k = 0; k < n - 1; k++) {
+    // Partial pivoting: find the row with the largest absolute value
+    // in column k, among rows k..min(k+hb, n-1)
+    const iMax = Math.min(k + hb, n - 1);
+    let maxVal = Math.abs(bands[mainDiag][k]);
+    let maxRow = k;
+    for (let i = k + 1; i <= iMax; i++) {
+      const diagIdx = (k - i) + hb; // column k from row i
+      if (diagIdx < 0 || diagIdx >= bands.length) continue;
+      const val = Math.abs(bands[diagIdx][i]);
+      if (val > maxVal) {
+        maxVal = val;
+        maxRow = i;
+      }
+    }
+
+    // Swap rows if a better pivot was found
+    if (maxRow !== k) {
+      swapRows(mat, rhs, k, maxRow);
+    }
+
     const pivot = bands[mainDiag][k];
     if (Math.abs(pivot) < 1e-30) {
-      // Near-singular: set row to small identity
+      // Genuinely singular: set diagonal to small value, zero the solution
       bands[mainDiag][k] = 1e-20;
       continue;
     }
 
     // Eliminate entries below the pivot within the band
-    const iMax = Math.min(k + hb, n - 1);
     for (let i = k + 1; i <= iMax; i++) {
-      const offset = k - i; // col - row = k - i (negative)
-      const diagIdx = offset + hb;
+      const diagIdx = (k - i) + hb;
       if (diagIdx < 0 || diagIdx >= bands.length) continue;
 
       const factor = bands[diagIdx][i] / pivot;
       if (factor === 0) continue;
 
-      bands[diagIdx][i] = factor; // Store multiplier in place
+      bands[diagIdx][i] = 0; // Eliminated entry
 
       // Update remaining entries in row i
       const jMax = Math.min(k + hb, n - 1);

@@ -1,8 +1,9 @@
 /**
  * Dynamic info bubble that appears during key events.
+ * Auto-dismisses info/warning severity; critical requires manual close.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePhysicsStore } from '../../store/physics-store';
 import { useGameStore } from '../../store/game-store';
 import { useUIStore } from '../../store/ui-store';
@@ -11,9 +12,13 @@ import { triggerGlow } from '../../renderer/effects/pulse-glow';
 import { triggerCalving } from '../../renderer/particles/calving';
 import type { PhysicsStatePayload } from '../../engine/types';
 
+const AUTO_DISMISS_MS: Record<string, number> = {
+  info: 5000,
+  warning: 8000,
+};
+
 /** Find the ice front position and surface elevation from physics state. */
 function getIceFront(state: PhysicsStatePayload): { frontX: number; frontZ: number } {
-  // Scan from ocean end to find last node with substantial ice
   for (let i = state.H.length - 1; i >= 0; i--) {
     if (state.H[i] >= 50) {
       const dx = (state.gl_position * 1000) / Math.max(1, state.H.length - 1);
@@ -28,8 +33,8 @@ export default function InfoBubble() {
   const { addEvent, pendingEvents, dismissEvent } = useGameStore();
   const language = useUIStore((s) => s.language);
   const isZh = language === 'zh';
-
   const physicsState = usePhysicsStore((s) => s.state);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     for (const event of events) {
@@ -39,7 +44,6 @@ export default function InfoBubble() {
         severity: event.severity,
       });
 
-      // Trigger visual effects for critical events
       if (event.type === 'mici_triggered') {
         triggerShake(8, 800);
         triggerGlow('rgba(255, 140, 0', 1200);
@@ -62,9 +66,28 @@ export default function InfoBubble() {
     }
   }, [events, isZh, addEvent, physicsState]);
 
-  if (pendingEvents.length === 0) return null;
-
+  // Auto-dismiss timer for non-critical events
   const current = pendingEvents[0];
+  useEffect(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (!current) return;
+
+    const duration = AUTO_DISMISS_MS[current.severity];
+    if (!duration) return; // critical: no auto-dismiss
+
+    timerRef.current = setTimeout(() => {
+      dismissEvent(current.id);
+    }, duration);
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [current, dismissEvent]);
+
+  if (pendingEvents.length === 0 || !current) return null;
 
   const severityStyles: Record<string, { bg: string; border: string }> = {
     info: {
@@ -82,35 +105,77 @@ export default function InfoBubble() {
   };
 
   const style = severityStyles[current.severity] || severityStyles.info;
+  const autoDismissMs = AUTO_DISMISS_MS[current.severity];
 
   return (
     <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 max-w-md animate-in" role="alert" aria-live="assertive">
       <div
-        className="rounded-xl p-4 backdrop-blur-md"
+        className="rounded-xl overflow-hidden backdrop-blur-md"
         style={{
           background: style.bg,
           border: `1px solid ${style.border}`,
           boxShadow: 'var(--shadow-md)',
         }}
       >
-        <div className="flex items-start gap-2">
-          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+        <div className="flex items-start gap-2 p-4 pb-3">
+          <p className="text-sm leading-relaxed flex-1" style={{ color: 'var(--text-primary)' }}>
             {current.message}
           </p>
           <button
             onClick={() => dismissEvent(current.id)}
-            className="flex-shrink-0 ml-2 transition-colors"
+            className="flex-shrink-0 ml-2 w-6 h-6 rounded-full flex items-center justify-center transition-colors"
             style={{ color: 'var(--text-muted)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+            aria-label="Dismiss"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--bg-card)';
+              e.currentTarget.style.color = 'var(--text-primary)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = 'var(--text-muted)';
+            }}
           >
             {'\u2715'}
           </button>
         </div>
-        {pendingEvents.length > 1 && (
-          <div className="mt-2 font-data text-[10px] text-right" style={{ color: 'var(--text-muted)' }}>
-            +{pendingEvents.length - 1} more
-          </div>
+
+        {/* Event queue indicator + auto-dismiss progress */}
+        <div className="px-4 pb-2 flex items-center justify-between">
+          {/* Queue dots */}
+          {pendingEvents.length > 1 && (
+            <div className="flex items-center gap-1">
+              {pendingEvents.slice(0, 5).map((evt, i) => (
+                <span
+                  key={evt.id}
+                  className="rounded-full"
+                  style={{
+                    width: 6,
+                    height: 6,
+                    background: i === 0 ? 'var(--accent)' : 'transparent',
+                    border: i === 0 ? 'none' : '1px solid var(--text-muted)',
+                  }}
+                />
+              ))}
+              {pendingEvents.length > 5 && (
+                <span className="font-data text-[9px]" style={{ color: 'var(--text-muted)' }}>
+                  +{pendingEvents.length - 5}
+                </span>
+              )}
+            </div>
+          )}
+          <div />
+        </div>
+
+        {/* Auto-dismiss progress bar */}
+        {autoDismissMs && (
+          <div
+            key={current.id}
+            className="h-[2px]"
+            style={{
+              background: style.border,
+              animation: `progress-shrink ${autoDismissMs}ms linear forwards`,
+            }}
+          />
         )}
       </div>
     </div>
