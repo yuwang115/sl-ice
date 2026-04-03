@@ -53,6 +53,11 @@ interface UIStore {
   // Visualization overlays
   overlayMode: OverlayMode;
   setOverlayMode: (mode: OverlayMode) => void;
+
+  // Canvas tooltips (pretext-powered)
+  showCanvasTooltips: boolean;
+  setShowCanvasTooltips: (show: boolean) => void;
+  toggleCanvasTooltips: () => void;
 }
 
 export const useUIStore = create<UIStore>()(persist(
@@ -108,6 +113,10 @@ export const useUIStore = create<UIStore>()(persist(
 
   overlayMode: 'none',
   setOverlayMode: (mode) => set({ overlayMode: mode }),
+
+  showCanvasTooltips: true,
+  setShowCanvasTooltips: (show) => set({ showCanvasTooltips: show }),
+  toggleCanvasTooltips: () => set((s) => ({ showCanvasTooltips: !s.showCanvasTooltips })),
 }),
   {
     name: 'sl-ice-ui',
@@ -115,6 +124,7 @@ export const useUIStore = create<UIStore>()(persist(
       theme: state.theme,
       language: state.language,
       overlayMode: state.overlayMode,
+      showCanvasTooltips: state.showCanvasTooltips,
     }),
   },
 ));

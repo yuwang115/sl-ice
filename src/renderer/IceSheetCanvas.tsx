@@ -18,6 +18,9 @@ import { drawCalving, resetCalving, triggerCalving } from './particles/calving';
 import { drawStrainRateHeatmap, drawVelocityProfiles, drawIsochrones, drawTracerParticles, resetTracerParticles } from './draw-internal-flow';
 import { getShakeOffset } from './effects/screen-shake';
 import { drawGlow } from './effects/pulse-glow';
+import { drawCanvasTooltips, clearPreparedCache } from './draw-canvas-tooltips';
+import { drawStatusHUD } from './draw-status-hud';
+import type { HoverPosition } from './draw-canvas-tooltips';
 import type { OverlayMode } from '../store/ui-store';
 
 export default function IceSheetCanvas() {
@@ -30,11 +33,16 @@ export default function IceSheetCanvas() {
   const prevIceFrontRef = useRef<number>(-1);
   const lastCalvingSpawnRef = useRef<number>(0);
   const overlayModeRef = useRef<OverlayMode>('none');
+  const hoverRef = useRef<HoverPosition | null>(null);
+  const languageRef = useRef<'en' | 'zh'>('en');
+  const showTooltipsRef = useRef(true);
 
   const physicsState = usePhysicsStore((s) => s.state);
   const scenario = usePhysicsStore((s) => s.scenario);
   const setCanvasSize = useUIStore((s) => s.setCanvasSize);
   const overlayMode = useUIStore((s) => s.overlayMode);
+  const language = useUIStore((s) => s.language);
+  const showCanvasTooltips = useUIStore((s) => s.showCanvasTooltips);
   const params = useGameStore((s) => s.params);
 
   useEffect(() => {
@@ -52,6 +60,32 @@ export default function IceSheetCanvas() {
   useEffect(() => {
     overlayModeRef.current = overlayMode;
   }, [overlayMode]);
+
+  useEffect(() => {
+    if (languageRef.current !== language) {
+      clearPreparedCache();
+    }
+    languageRef.current = language;
+  }, [language]);
+
+  useEffect(() => {
+    showTooltipsRef.current = showCanvasTooltips;
+  }, [showCanvasTooltips]);
+
+  // Mouse hover tracking (refs only — no React re-renders)
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    hoverRef.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    hoverRef.current = null;
+  }, []);
 
   // Resize handler
   useEffect(() => {
@@ -235,13 +269,20 @@ export default function IceSheetCanvas() {
     }
 
     // ── Effects ──
+    const lang = languageRef.current;
     if (physicsState.is_misi_active) {
-      drawMISIWarning(dc);
+      drawMISIWarning(dc, lang);
     }
     if (physicsState.is_mici_active) {
-      drawMICIWarning(dc);
+      drawMICIWarning(dc, lang);
     }
     drawGlow(ctx, displayW, displayH);
+
+    // ── Pretext-powered overlays ──
+    if (showTooltipsRef.current) {
+      drawCanvasTooltips(dc, physicsState, xPositions, hoverRef.current, lang);
+      drawStatusHUD(dc, physicsState, lang);
+    }
 
     ctx.restore();
     animFrameRef.current = requestAnimationFrame(render);
@@ -263,7 +304,9 @@ export default function IceSheetCanvas() {
     <canvas
       ref={canvasRef}
       className="w-full h-full block"
-      style={{ background: '#0A1628' }}
+      style={{ background: '#0A1628', cursor: hoverRef.current ? 'pointer' : 'default' }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
     />
   );
 }

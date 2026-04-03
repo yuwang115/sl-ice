@@ -3,6 +3,9 @@
  */
 
 import { toCanvasX, toCanvasY, type DrawContext } from './draw-bedrock';
+import { drawTooltipPanel } from './canvas-text';
+
+type Language = 'en' | 'zh';
 
 /**
  * Draw axis labels and scale indicators.
@@ -68,7 +71,7 @@ export function drawAxes(dc: DrawContext): void {
 /**
  * Draw a MISI warning overlay when MISI is active.
  */
-export function drawMISIWarning(dc: DrawContext): void {
+export function drawMISIWarning(dc: DrawContext, language: Language = 'en'): void {
   const { ctx, width, height } = dc;
 
   // Red pulsing border
@@ -77,17 +80,38 @@ export function drawMISIWarning(dc: DrawContext): void {
   ctx.lineWidth = 4;
   ctx.strokeRect(2, 2, width - 4, height - 4);
 
-  // Warning text
-  ctx.font = 'bold 14px sans-serif';
-  ctx.fillStyle = `rgba(255, 68, 68, ${0.6 + pulse})`;
-  ctx.textAlign = 'center';
-  ctx.fillText('⚠ MARINE ICE SHEET INSTABILITY ⚠', width / 2, 25);
+  // Multiline warning panel
+  const panelW = Math.min(360, width - 20);
+  const title = language === 'zh'
+    ? '\u26a0 \u6d77\u6d0b\u51b0\u76d6\u4e0d\u7a33\u5b9a\u6027'
+    : '\u26a0 MARINE ICE SHEET INSTABILITY';
+  const body = language === 'zh'
+    ? '\u63a5\u5730\u7ebf\u6b63\u5728\u5411\u5185\u9646\u5feb\u901f\u540e\u9000\u3002\u6b63\u53cd\u9988\u53ef\u80fd\u5bfc\u81f4\u4e0d\u53ef\u9006\u7684\u51b0\u76d6\u5d29\u584c\u3002'
+    : 'The grounding line is retreating rapidly inland. Positive feedback may cause irreversible collapse.';
+
+  drawTooltipPanel(ctx, {
+    x: width / 2 - panelW / 2,
+    y: 8,
+    maxWidth: panelW,
+    padding: 8,
+    bgColor: `rgba(60, 10, 10, ${0.85 + pulse * 0.1})`,
+    borderColor: `rgba(255, 68, 68, ${0.5 + pulse * 0.3})`,
+    borderRadius: 6,
+    borderWidth: 2,
+    titleFont: 'bold 13px "Nunito", sans-serif',
+    titleColor: `rgba(255, 100, 100, ${0.8 + pulse * 0.2})`,
+    title,
+    bodyFont: '11px "Nunito", sans-serif',
+    bodyColor: 'rgba(255, 200, 200, 0.85)',
+    body,
+    lineHeight: 15,
+  });
 }
 
 /**
  * Draw a MICI warning overlay when MICI is active.
  */
-export function drawMICIWarning(dc: DrawContext): void {
+export function drawMICIWarning(dc: DrawContext, language: Language = 'en'): void {
   const { ctx, width, height } = dc;
 
   // Orange pulsing border (different frequency from MISI red)
@@ -96,11 +120,32 @@ export function drawMICIWarning(dc: DrawContext): void {
   ctx.lineWidth = 3;
   ctx.strokeRect(6, 6, width - 12, height - 12);
 
-  // Warning text
-  ctx.font = 'bold 12px sans-serif';
-  ctx.fillStyle = `rgba(255, 140, 0, ${0.5 + pulse})`;
-  ctx.textAlign = 'center';
-  ctx.fillText('\u26a0 MARINE ICE CLIFF INSTABILITY \u26a0', width / 2, 42);
+  // Multiline warning panel (offset below MISI panel if both active)
+  const panelW = Math.min(340, width - 20);
+  const title = language === 'zh'
+    ? '\u26a0 \u6d77\u6d0b\u51b0\u5d16\u4e0d\u7a33\u5b9a\u6027'
+    : '\u26a0 MARINE ICE CLIFF INSTABILITY';
+  const body = language === 'zh'
+    ? '\u51b0\u5d16\u8d85\u8fc7\u4e34\u754c\u9ad8\u5ea6\uff0c\u53ef\u80fd\u5728\u81ea\u8eab\u91cd\u91cf\u4e0b\u5d29\u584c\u3002\u8fd9\u4f1a\u5bfc\u81f4\u5feb\u901f\u7684\u51b0\u5c42\u635f\u5931\u548c\u6d77\u5e73\u9762\u4e0a\u5347\u3002'
+    : 'The ice cliff exceeds critical height and may collapse under its own weight. This drives rapid ice loss and sea level rise.';
+
+  drawTooltipPanel(ctx, {
+    x: width / 2 - panelW / 2,
+    y: 55, // below MISI panel
+    maxWidth: panelW,
+    padding: 8,
+    bgColor: `rgba(50, 25, 0, ${0.85 + pulse * 0.1})`,
+    borderColor: `rgba(255, 140, 0, ${0.4 + pulse * 0.3})`,
+    borderRadius: 6,
+    borderWidth: 2,
+    titleFont: 'bold 12px "Nunito", sans-serif',
+    titleColor: `rgba(255, 170, 50, ${0.8 + pulse * 0.2})`,
+    title,
+    bodyFont: '11px "Nunito", sans-serif',
+    bodyColor: 'rgba(255, 220, 180, 0.85)',
+    body,
+    lineHeight: 15,
+  });
 }
 
 /**
