@@ -26,30 +26,42 @@ export default function ChallengeBriefing({ challengeId, onStart, onCancel }: Ch
   const [isComplete, setIsComplete] = useState(false);
   const indexRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval>>();
+  const frameRef = useRef(0);
 
   // Typewriter effect
   useEffect(() => {
+    clearInterval(timerRef.current);
+    cancelAnimationFrame(frameRef.current);
+
     if (!fullText) {
-      setIsComplete(true);
-      return;
+      frameRef.current = requestAnimationFrame(() => {
+        setDisplayedText('');
+        setIsComplete(true);
+      });
+      return () => cancelAnimationFrame(frameRef.current);
     }
 
-    indexRef.current = 0;
-    setDisplayedText('');
-    setIsComplete(false);
+    frameRef.current = requestAnimationFrame(() => {
+      indexRef.current = 0;
+      setDisplayedText('');
+      setIsComplete(false);
 
-    timerRef.current = setInterval(() => {
-      indexRef.current += 1;
-      if (indexRef.current >= fullText.length) {
-        setDisplayedText(fullText);
-        setIsComplete(true);
-        clearInterval(timerRef.current);
-      } else {
-        setDisplayedText(fullText.slice(0, indexRef.current));
-      }
-    }, 25); // 25ms per character
+      timerRef.current = setInterval(() => {
+        indexRef.current += 1;
+        if (indexRef.current >= fullText.length) {
+          setDisplayedText(fullText);
+          setIsComplete(true);
+          clearInterval(timerRef.current);
+        } else {
+          setDisplayedText(fullText.slice(0, indexRef.current));
+        }
+      }, 25); // 25ms per character
+    });
 
-    return () => clearInterval(timerRef.current);
+    return () => {
+      cancelAnimationFrame(frameRef.current);
+      clearInterval(timerRef.current);
+    };
   }, [fullText]);
 
   const handleSkip = useCallback(() => {

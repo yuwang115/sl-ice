@@ -13,11 +13,15 @@ export function useAnimatedNumber(target: number, duration = 300): number {
     const from = prevRef.current;
     const delta = target - from;
 
+    cancelAnimationFrame(rafRef.current);
+
     // Skip animation for negligible changes (< 0.1% of value range)
     if (Math.abs(delta) < Math.abs(target) * 0.001 && Math.abs(delta) < 0.01) {
-      prevRef.current = target;
-      setDisplay(target);
-      return;
+      rafRef.current = requestAnimationFrame(() => {
+        prevRef.current = target;
+        setDisplay(target);
+      });
+      return () => cancelAnimationFrame(rafRef.current);
     }
 
     const start = performance.now();

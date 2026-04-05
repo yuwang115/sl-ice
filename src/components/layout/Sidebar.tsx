@@ -59,33 +59,6 @@ const tooltips: Record<string, { en: string; zh: string }> = {
   },
 };
 
-function Tooltip({ text }: { text: string }) {
-  return (
-    <span className="group relative inline-flex ml-1 cursor-help">
-      <span
-        className="flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-bold"
-        style={{
-          border: '1px solid var(--border)',
-          color: 'var(--text-muted)',
-        }}
-      >
-        i
-      </span>
-      <span
-        className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 rounded-lg p-2 text-[11px] leading-snug opacity-0 group-hover:opacity-100 transition-opacity z-50"
-        style={{
-          background: 'var(--bg-panel-solid)',
-          border: '1px solid var(--border)',
-          boxShadow: 'var(--shadow-md)',
-          color: 'var(--text-secondary)',
-        }}
-      >
-        {text}
-      </span>
-    </span>
-  );
-}
-
 export default function Sidebar() {
   const { params, setParam } = useGameStore();
   const updateParams = usePhysicsStore((s) => s.updateParams);

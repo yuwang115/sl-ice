@@ -102,7 +102,7 @@ const conceptDebriefs: Record<string, { en: string; zh: string }> = {
 };
 
 function ChallengeResultOverlay({ result }: { result: ChallengeResult }) {
-  const { dismissChallengeResult, setMode } = useGameStore();
+  const { dismissChallengeResult } = useGameStore();
   const language = useUIStore((s) => s.language);
   const isZh = language === 'zh';
 
@@ -363,7 +363,7 @@ function SeaLevelImpact() {
 
 /* ─── Main Component ────────────────────────────────────── */
 export default function ChallengePanel() {
-  const { currentChallenge, challengeProgress, challengeResult, startChallenge, dismissChallengeResult, setMode, setParams, setRunning, setSpeed } = useGameStore();
+  const { currentChallenge, challengeProgress, challengeResult, startChallenge, setMode, setParams, setRunning, setSpeed } = useGameStore();
   const { loadScenario } = usePhysicsStore();
   const language = useUIStore((s) => s.language);
   const isZh = language === 'zh';

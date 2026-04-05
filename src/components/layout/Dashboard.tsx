@@ -172,9 +172,6 @@ export default function Dashboard() {
 
   // Extract last 30 points for sparklines
   const recentHistory = history.slice(-30);
-  const volumeSpark = recentHistory.map((h) =>
-    'volume' in h ? (h as { volume: number }).volume : 0,
-  );
   const glPosSpark = recentHistory.map((h) =>
     'glPosition' in h ? (h as { glPosition: number }).glPosition : 0,
   );

@@ -22,7 +22,6 @@ export function useAchievementChecker() {
 
       const game = useGameStore.getState();
       const physics = usePhysicsStore.getState();
-      const ui = useUIStore.getState();
       const state = physics.state;
 
       const progress = game.challengeProgress;
