@@ -25,7 +25,7 @@ export default function ChallengeBriefing({ challengeId, onStart, onCancel }: Ch
   const [displayedText, setDisplayedText] = useState('');
   const [isComplete, setIsComplete] = useState(false);
   const indexRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setInterval>>();
+  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const frameRef = useRef(0);
 
   // Typewriter effect

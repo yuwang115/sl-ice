@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import type { ComponentType } from 'react';
 import { useGameStore } from '../../store/game-store';
 import { useUIStore } from '../../store/ui-store';
 import ThemeToggle from '../controls/ThemeToggle';
@@ -43,7 +44,7 @@ const IconCompass = () => (
   </svg>
 );
 
-const modeIcons: Record<string, () => JSX.Element> = {
+const modeIcons: Record<string, ComponentType> = {
   sandbox: IconBeaker,
   challenge: IconTrophy,
   real_world: IconGlobe,

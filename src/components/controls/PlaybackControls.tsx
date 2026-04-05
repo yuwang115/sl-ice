@@ -4,6 +4,7 @@
 
 import { useGameStore } from '../../store/game-store';
 import { usePhysicsStore } from '../../store/physics-store';
+import type { ReactNode } from 'react';
 import type { SimulationSpeed } from '../../engine/types';
 
 /* ─── SVG Icons ─────────────────────────────────────────── */
@@ -25,7 +26,7 @@ export default function PlaybackControls() {
   const { speed, setSpeed, setRunning } = useGameStore();
   const reset = usePhysicsStore((s) => s.reset);
 
-  const speeds: { key: SimulationSpeed; label: string | JSX.Element }[] = [
+  const speeds: { key: SimulationSpeed; label: ReactNode }[] = [
     { key: 'paused', label: <PauseIcon /> },
     { key: 'normal', label: '1\u00d7' },
     { key: 'fast', label: '2\u00d7' },
