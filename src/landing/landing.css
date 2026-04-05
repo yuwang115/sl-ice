@@ -1,0 +1,121 @@
+/* ─── Override app's overflow:hidden for scrollable landing ─── */
+html, body, #root {
+  height: auto;
+  overflow: auto;
+  overflow-x: hidden;
+}
+
+/* ─── Scroll Reveal Animations ─────────────────────────────── */
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.scroll-reveal.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.scroll-reveal-scale {
+  opacity: 0;
+  transform: scale(0.95);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.scroll-reveal-scale.revealed {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-reveal,
+  .scroll-reveal-scale {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ─── Landing-specific Utilities ───────────────────────────── */
+.landing-section {
+  padding: 5rem 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .landing-section {
+    padding: 6rem 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .landing-section {
+    padding: 7rem 5rem;
+  }
+}
+
+/* ─── Scroll Chevron ───────────────────────────────────────── */
+@keyframes bounce-down {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(8px); }
+}
+
+.animate-bounce-down {
+  animation: bounce-down 2s ease-in-out infinite;
+}
+
+/* ─── Hero Stagger ─────────────────────────────────────────── */
+.hero-stagger-1 { animation: ghibli-fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both; }
+.hero-stagger-2 { animation: ghibli-fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both; }
+.hero-stagger-3 { animation: ghibli-fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both; }
+.hero-stagger-4 { animation: ghibli-fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both; }
+
+/* ─── Section Divider ──────────────────────────────────────── */
+.section-divider {
+  width: 60px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  margin: 0 auto 2rem;
+  opacity: 0.6;
+}
+
+/* ─── Browser Chrome Mockup ────────────────────────────────── */
+.browser-chrome {
+  background: var(--bg-panel-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+
+.browser-chrome-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.browser-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+/* ─── Star Rating ──────────────────────────────────────────── */
+.star-filled {
+  color: var(--accent-warm);
+}
+
+.star-empty {
+  color: var(--text-muted);
+  opacity: 0.3;
+}
