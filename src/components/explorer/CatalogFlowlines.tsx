@@ -7,6 +7,7 @@ import { useMemo, useCallback, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { Line } from '@react-three/drei';
 import { useExplorerStore } from '../../store/explorer-store';
+import { getFlowlineLineAppearance } from '../../lib/explorer-interactions';
 import { projectFlowlinePath } from '../../lib/terrain/projection';
 import type { FlowlineCatalogEntry } from '../game/FlowlineListPanel';
 import type { ThreeEvent } from '@react-three/fiber';
@@ -21,18 +22,6 @@ interface FlowlinePath {
 
 interface CatalogFlowlinesProps {
   catalog: FlowlineCatalogEntry[];
-}
-
-// ── Brighten a hex color ─────────────────────────────────────────────
-
-function brightenHex(hex: string, factor: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const br = Math.min(255, Math.round(r + (255 - r) * factor));
-  const bg = Math.min(255, Math.round(g + (255 - g) * factor));
-  const bb = Math.min(255, Math.round(b + (255 - b) * factor));
-  return `#${br.toString(16).padStart(2, '0')}${bg.toString(16).padStart(2, '0')}${bb.toString(16).padStart(2, '0')}`;
 }
 
 // ── Main Component ───────────────────────────────────────────────────
@@ -134,26 +123,13 @@ function FlowlineLine({
 }: FlowlineLineProps) {
   const lastClickRef = useRef(0);
 
-  // Determine visual properties
-  let lineWidth: number;
-  let lineColor: string;
-
-  if (isActivating) {
-    lineWidth = 6;
-    lineColor = '#ffffff';
-  } else if (isFading) {
-    lineWidth = 0.5;
-    lineColor = '#1e293b';
-  } else if (isSelected) {
-    lineWidth = 4.5;
-    lineColor = '#fbbf24';
-  } else if (isHovered) {
-    lineWidth = 3;
-    lineColor = brightenHex(color, 0.5);
-  } else {
-    lineWidth = 1.5;
-    lineColor = color;
-  }
+  const { lineWidth, lineColor } = getFlowlineLineAppearance({
+    color,
+    isHovered,
+    isSelected,
+    isActivating,
+    isFading,
+  });
 
   // Create tube geometry for raycasting (Line doesn't support it reliably)
   const tubeGeo = useMemo(() => {

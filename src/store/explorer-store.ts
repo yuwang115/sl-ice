@@ -137,7 +137,7 @@ const initialState = {
   transitionPhase: 'idle' as TransitionPhase,
 
   showIce: true,
-  showVelocity: true,
+  showVelocity: false,
   showFlowlines: true,
 
   iceOpacity: 0.65,

@@ -44,34 +44,36 @@ function WelcomeOverlay({ onDismiss, isZh }: { onDismiss: () => void; isZh: bool
       }}
       onClick={handleDismiss}
     >
-      {/* Logo */}
-      <img
-        src={theme === 'dark' ? '/SL-ICE logo dark.png' : '/SL-ICE logo light.png'}
-        alt="SLICE"
-        className="max-w-[280px] md:max-w-[360px] h-auto mb-6"
-        style={{ filter: 'drop-shadow(0 0 20px rgba(56,189,248,0.3))' }}
-        draggable={false}
-      />
+      <div className="w-full max-w-md md:max-w-xl px-4 flex flex-col items-center">
+        {/* Logo */}
+        <img
+          src={theme === 'dark' ? '/SL-ICE logo dark.png' : '/SL-ICE logo light.png'}
+          alt="SLICE"
+          className="w-full h-auto mb-6"
+          style={{ filter: 'drop-shadow(0 0 20px rgba(56,189,248,0.3))' }}
+          draggable={false}
+        />
 
-      {/* Tagline */}
-      <p
-        className="text-lg md:text-xl font-light tracking-wide mb-3 text-center px-4"
-        style={{ color: 'rgba(224,242,254,0.95)' }}
-      >
-        {isZh
-          ? '切下一片南极，探索冰盖的秘密'
-          : 'Slice off a piece of Antarctica and explore its secrets'}
-      </p>
+        {/* Tagline */}
+        <p
+          className="w-full text-lg md:text-xl font-light tracking-wide mb-3 text-center"
+          style={{ color: 'rgba(224,242,254,0.95)' }}
+        >
+          {isZh
+            ? '切下一片南极，探索冰盖的秘密'
+            : 'Slice off a piece of Antarctica and explore its secrets'}
+        </p>
 
-      {/* Subtitle */}
-      <p
-        className="text-sm max-w-md text-center leading-relaxed mb-8 px-4"
-        style={{ color: 'rgba(148,200,230,0.75)' }}
-      >
-        {isZh
-          ? '选择一条冰流线，模拟真实的冰川动力学过程。点击任意位置开始探索。'
-          : 'Select a flowline to simulate real glacier dynamics. Click anywhere to start exploring.'}
-      </p>
+        {/* Subtitle */}
+        <p
+          className="w-full text-sm text-center leading-relaxed mb-8"
+          style={{ color: 'rgba(148,200,230,0.75)' }}
+        >
+          {isZh
+            ? '选择一条冰流线，模拟真实的冰川动力学过程。点击任意位置开始探索。'
+            : 'Select a flowline to simulate real glacier dynamics. Click anywhere to start exploring.'}
+        </p>
+      </div>
 
       {/* CTA */}
       <button

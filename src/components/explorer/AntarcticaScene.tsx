@@ -13,7 +13,6 @@ import { useExplorerStore } from '../../store/explorer-store';
 import { useUIStore } from '../../store/ui-store';
 import { loadGmtReliefColormap } from '../../lib/terrain/colormap-loader';
 import {
-  AUTO_ROTATE_IDLE_RESUME_MS,
   DEFAULT_AUTO_ROTATE_SPEED,
   DEFAULT_CAMERA_POSITION,
   DEFAULT_CAMERA_TARGET,
@@ -21,6 +20,8 @@ import {
   FOG_NEAR,
   SCENE_BACKGROUND,
 } from '../../lib/terrain/constants';
+import { getAutoRotateResumeDelay } from '../../lib/explorer-interactions';
+import { getWheelDollyScale, normalizeWheelDeltaY } from '../../lib/wheel-zoom';
 
 import BedrockMesh from './BedrockMesh';
 import IceSurfaceMesh from './IceSurfaceMesh';
@@ -180,9 +181,12 @@ function SceneContent() {
 
 function ExplorerOrbitControls() {
   const isTransitioning = useExplorerStore((s) => s.isTransitioning);
+  const selectedFlowlineId = useExplorerStore((s) => s.selectedFlowlineId);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const resumeTimerRef = useRef<number | null>(null);
   const autoRotateEnabledRef = useRef(true);
+  const controlKeyActiveRef = useRef(false);
+  const lastSelectedFlowlineRef = useRef<string | null>(null);
 
   const syncAutoRotate = useCallback((enabled: boolean) => {
     autoRotateEnabledRef.current = enabled;
@@ -214,12 +218,40 @@ function ExplorerOrbitControls() {
     syncAutoRotate(false);
   }, [clearResumeTimer, syncAutoRotate]);
 
-  const scheduleAutoRotateResume = useCallback(() => {
+  const scheduleAutoRotateResume = useCallback((interaction: 'idle' | 'flowline-selection' = 'idle') => {
     clearResumeTimer();
     resumeTimerRef.current = window.setTimeout(() => {
       syncAutoRotate(true);
-    }, AUTO_ROTATE_IDLE_RESUME_MS);
+    }, getAutoRotateResumeDelay(interaction));
   }, [clearResumeTimer, syncAutoRotate]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Control') {
+        controlKeyActiveRef.current = true;
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Control') {
+        controlKeyActiveRef.current = false;
+      }
+    };
+
+    const handleBlur = () => {
+      controlKeyActiveRef.current = false;
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
 
   useEffect(() => {
     const controls = controlsRef.current;
@@ -227,23 +259,54 @@ function ExplorerOrbitControls() {
     if (!dom) return;
 
     const handlePointerDown = () => pauseAutoRotate();
-    const handlePointerUp = () => scheduleAutoRotateResume();
-    const handleWheel = () => {
+    const handlePointerUp = () => scheduleAutoRotateResume('idle');
+    const handleWheel = (event: WheelEvent) => {
       pauseAutoRotate();
-      scheduleAutoRotateResume();
+      scheduleAutoRotateResume('idle');
+
+      if (!controls || !controls.enabled || !controls.enableZoom) return;
+
+      const deltaY = normalizeWheelDeltaY(event, controlKeyActiveRef.current);
+      if (deltaY === 0) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      const dollyScale = getWheelDollyScale(deltaY, controls.zoomSpeed);
+      if (deltaY < 0) {
+        controls.dollyIn(dollyScale);
+      } else {
+        controls.dollyOut(dollyScale);
+      }
     };
 
     dom.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('pointerup', handlePointerUp);
-    dom.addEventListener('wheel', handleWheel, { passive: true });
+    dom.addEventListener('wheel', handleWheel, { capture: true, passive: false });
 
     return () => {
       clearResumeTimer();
       dom.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointerup', handlePointerUp);
-      dom.removeEventListener('wheel', handleWheel);
+      dom.removeEventListener('wheel', handleWheel, true);
     };
   }, [clearResumeTimer, pauseAutoRotate, scheduleAutoRotateResume]);
+
+  useEffect(() => {
+    const previousSelectedFlowlineId = lastSelectedFlowlineRef.current;
+    lastSelectedFlowlineRef.current = selectedFlowlineId;
+
+    if (
+      !selectedFlowlineId ||
+      selectedFlowlineId === previousSelectedFlowlineId ||
+      isTransitioning
+    ) {
+      return;
+    }
+
+    pauseAutoRotate();
+    scheduleAutoRotateResume('flowline-selection');
+  }, [isTransitioning, pauseAutoRotate, scheduleAutoRotateResume, selectedFlowlineId]);
 
   useEffect(() => {
     const controls = controlsRef.current;
