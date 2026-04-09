@@ -15,6 +15,11 @@ import { drawSnowfall, resetSnowfall } from './particles/snowfall';
 import { drawWaterFlow, resetWaterFlow } from './particles/water-flow';
 import { drawOceanCurrent, resetOceanCurrent } from './particles/ocean-current';
 import { drawCalving, resetCalving, triggerCalving } from './particles/calving';
+import {
+  drawPenguins, resetPenguins, spawnInitialPenguins,
+  handlePenguinMouseDown, handlePenguinMouseMove, handlePenguinMouseUp,
+  handlePenguinClick, handlePenguinDoubleClick, penguinCursorState,
+} from './particles/penguins';
 import { drawStrainRateHeatmap, drawVelocityProfiles, drawIsochrones, drawTracerParticles, resetTracerParticles } from './draw-internal-flow';
 import { getShakeOffset } from './effects/screen-shake';
 import { drawGlow } from './effects/pulse-glow';
@@ -32,6 +37,8 @@ export default function IceSheetCanvas() {
   const xPositionCacheRef = useRef<{ key: string; positions: Float64Array } | null>(null);
   const prevIceFrontRef = useRef<number>(-1);
   const lastCalvingSpawnRef = useRef<number>(0);
+  const penguinSpawnedRef = useRef(false);
+  const dcRef = useRef<DrawContext | null>(null);
   const overlayModeRef = useRef<OverlayMode>('none');
   const hoverRef = useRef<HoverPosition | null>(null);
   const languageRef = useRef<'en' | 'zh'>('en');
@@ -51,6 +58,9 @@ export default function IceSheetCanvas() {
 
   useEffect(() => {
     scenarioRef.current = scenario;
+    // Reset penguins when scenario changes so they respawn on new ice
+    resetPenguins();
+    penguinSpawnedRef.current = false;
   }, [scenario]);
 
   useEffect(() => {
@@ -72,19 +82,55 @@ export default function IceSheetCanvas() {
     showTooltipsRef.current = showCanvasTooltips;
   }, [showCanvasTooltips]);
 
+  // Helper: update canvas cursor style directly (avoids React re-render)
+  const syncCursor = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const cur = penguinCursorState !== 'default' ? penguinCursorState : 'default';
+    if (canvas.style.cursor !== cur) canvas.style.cursor = cur;
+  }, []);
+
   // Mouse hover tracking (refs only — no React re-renders)
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
-    hoverRef.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-  }, []);
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    hoverRef.current = { x: cx, y: cy };
+    handlePenguinMouseMove(cx, cy);
+    syncCursor();
+  }, [syncCursor]);
 
   const handleMouseLeave = useCallback(() => {
     hoverRef.current = null;
+  }, []);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    handlePenguinMouseDown(e.clientX - rect.left, e.clientY - rect.top);
+    syncCursor();
+  }, [syncCursor]);
+
+  const handleMouseUp = useCallback(() => {
+    handlePenguinMouseUp();
+    syncCursor();
+  }, [syncCursor]);
+
+  const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    handlePenguinClick(e.clientX - rect.left, e.clientY - rect.top);
+  }, []);
+
+  const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    handlePenguinDoubleClick(e.clientX - rect.left, e.clientY - rect.top);
   }, []);
 
   // Resize handler
@@ -232,6 +278,14 @@ export default function IceSheetCanvas() {
     drawGroundingLine(dc, gl_pos_m, b, xPositions);
     drawVelocityArrows(dc, u_surface, s, H, xPositions);
 
+    // ── Penguins (on ice surface) ──
+    dcRef.current = dc;
+    if (!penguinSpawnedRef.current) {
+      spawnInitialPenguins(s, xPositions, gl_pos_m);
+      penguinSpawnedRef.current = true;
+    }
+    drawPenguins(dc, H, s, u_surface, xPositions, gl_pos_m);
+
     // ── Particle systems ──
     drawSnowfall(dc, smb, s, xPositions, params.precip_scale);
     if (params.enable_hydrology) {
@@ -297,6 +351,8 @@ export default function IceSheetCanvas() {
       resetOceanCurrent();
       resetCalving();
       resetTracerParticles();
+      resetPenguins();
+      penguinSpawnedRef.current = false;
     };
   }, [render]);
 
@@ -304,9 +360,13 @@ export default function IceSheetCanvas() {
     <canvas
       ref={canvasRef}
       className="w-full h-full block"
-      style={{ background: '#0A1628', cursor: hoverRef.current ? 'pointer' : 'default' }}
+      style={{ background: '#0A1628' }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onClick={handleCanvasClick}
+      onDoubleClick={handleDoubleClick}
     />
   );
 }
