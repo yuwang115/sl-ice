@@ -38,24 +38,24 @@ const IconShield = () => (
 /* ─── Tooltip descriptions per parameter ────────────────── */
 const tooltips: Record<string, { en: string; zh: string }> = {
   T_atm_delta: {
-    en: 'Temperature anomaly above pre-industrial baseline. Positive values warm the ice surface and increase melt.',
-    zh: '相对于工业化前基线的温度偏差。正值使冰面变暖并增加融化。',
+    en: 'Global atmospheric temperature anomaly. A polar-amplification factor (~1.8×) is applied automatically, and snowfall responds via Clausius–Clapeyron scaling (~7%/K).',
+    zh: '全球大气温度偏差。自动应用极地放大（~1.8×），降雪通过 Clausius–Clapeyron 关系（~7%/K）自动响应。',
   },
   T_ocean_delta: {
-    en: 'Ocean warming below the ice shelf. Warmer water accelerates basal melting and shelf thinning.',
-    zh: '冰架下方的海洋增暖。更温暖的水加速底部融化和冰架变薄。',
+    en: 'Ambient ocean warming reaching the ice-shelf cavity. Drives a PICO 2-box model (Reese et al. 2018): Box 1 near the grounding line sees raw warming, Box 2 near the calving front receives cooler, freshened water after Box 1 has extracted heat — so melt peaks at the GL and decays toward the front.',
+    zh: '到达冰架空腔的环境海水增暖。驱动 PICO 两盒模型（Reese 等 2018）：接地线侧 Box 1 获得原始增暖，前缘侧 Box 2 接收经 Box 1 提取热量后的冷却/淡化水——因此融化在接地线最强、向前缘递减。',
   },
   precip_scale: {
-    en: 'Multiplier for snowfall accumulation. Higher values add more ice mass to the surface.',
-    zh: '降雪累积的乘数。较高的值在冰面上增加更多冰量。',
+    en: 'Orographic / residual snowfall multiplier. The Clausius–Clapeyron response to ΔT is applied automatically on top of this factor, so 1.0× does NOT mean "no climate response".',
+    zh: '地形 / 残差降雪乘数。对 ΔT 的 Clausius–Clapeyron 响应会在此因子之上自动叠加，因此 1.0× 并不代表「无气候响应」。',
   },
   drain_efficiency: {
-    en: 'How quickly subglacial water drains. Lower values build water pressure, causing faster sliding.',
-    zh: '冰下水排泄速率。较低的值会积累水压，导致更快的冰滑动。',
+    en: 'Subglacial drainage rate (1/yr). Higher → water flushes quickly → high effective pressure → slow sliding. Lower → water accumulates → low effective pressure → fast sliding. Zwally feedback (surface melt → bed) also active when hydrology is enabled.',
+    zh: '冰下排水速率（1/yr）。越高 → 水排得越快 → 有效压力高 → 滑动慢；越低 → 水累积 → 有效压力低 → 滑动快。启用冰下水文时同时激活 Zwally 反馈（表面融水→基底）。',
   },
   mici_sensitivity: {
-    en: 'Sensitivity of marine ice cliff instability. Higher values make cliffs more prone to collapse.',
-    zh: '海洋冰崖不稳定性的敏感度。较高的值使冰崖更容易崩塌。',
+    en: 'Scaling on Schlemm & Levermann (2019) cliff-collapse rate. NOTE: MICI is contested — Bassis et al. (2021) and Edwards et al. (2019) argue the critical cliff height is higher and onset slower than this parameterization implies. Use as a "high-end storyline" knob.',
+    zh: 'Schlemm & Levermann (2019) 冰崖崩解速率的标度。注意：MICI 存在学术争议——Bassis 等 (2021) 与 Edwards 等 (2019) 认为真实临界崖高更高、启动更慢。请作为「高端情景」旋钮使用。',
   },
 };
 
@@ -87,10 +87,7 @@ export default function Sidebar() {
         />
       )}
       <aside
-        className="fixed right-0 top-0 bottom-0 w-64 z-50 md:static md:z-auto glass-panel border-l p-4 overflow-y-auto flex-shrink-0 transition-transform duration-300 ease-out md:translate-x-0"
-        style={{
-          transform: sidebarOpen ? 'translateX(0)' : 'translateX(100%)',
-        }}
+        className={`fixed right-0 top-0 bottom-0 w-64 z-50 md:static md:z-auto glass-panel border-l p-4 overflow-y-auto flex-shrink-0 transition-transform duration-300 ease-out md:!translate-x-0 ${sidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}
         role="complementary"
         aria-label="Parameter controls"
       >
@@ -154,7 +151,7 @@ export default function Sidebar() {
             min={0.1}
             max={5.0}
             step={0.1}
-            unit=" yr"
+            unit="/yr"
             defaultValue={1.0}
             onChange={(v) => handleChange('drain_efficiency', v)}
             color="var(--accent-teal)"

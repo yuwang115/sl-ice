@@ -22,14 +22,18 @@
  *   s  = 0.17*(9.1*w + 1.76)          exponent (~2–3)
  */
 
-import { RHO_ICE, RHO_WATER, MICI_C0, MICI_C_MAX } from './constants';
+import { RHO_ICE, RHO_WATER, MICI_C0, MICI_C_MAX, MICI_F_MARGIN } from './constants';
 import type { ModelState } from './types';
 
 /** Density ratio ρ_ice / ρ_water (constant for all calls). */
 const W_RATIO = RHO_ICE / RHO_WATER;
 
-/** Critical freeboard threshold (m). */
-const F_THRESHOLD = 75 - 49 * W_RATIO;
+/**
+ * Critical freeboard threshold (m). The geometric Schlemm–Levermann form is
+ * 75 − 49·W_RATIO ≈ 31 m; a Bassis-consistent viscoelastic margin is added
+ * so cliffs below ~90 m of freeboard remain quasi-stable.
+ */
+const F_THRESHOLD = 75 - 49 * W_RATIO + MICI_F_MARGIN;
 
 /** Scaling factor (m). */
 const F_SCALE = 115 * Math.pow(W_RATIO, -0.356) + 21;

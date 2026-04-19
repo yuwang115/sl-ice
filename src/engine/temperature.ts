@@ -13,7 +13,7 @@
 import {
   GLEN_N, KAPPA_ICE_YR, PRESSURE_MELTING,
   Q_COLD, Q_WARM, A0_COLD, A0_WARM, R_GAS, SEC_PER_YEAR,
-  STRAIN_RATE_MIN, LAPSE_RATE, T_ATM_BASE,
+  STRAIN_RATE_MIN, LAPSE_RATE, T_ATM_BASE, POLAR_AMPLIFICATION,
 } from './constants';
 import type { ModelGrid, UserParams } from './types';
 
@@ -117,8 +117,13 @@ export function effectiveViscosity(A: number, strainRateEff: number): number {
 /**
  * Compute surface temperature at a given location.
  *
+ * The user-supplied ΔT is interpreted as a global anomaly; the ice surface
+ * sees a polar-amplified version (POLAR_AMPLIFICATION ≈ 1.8 for Antarctica,
+ * consistent with CMIP6 land-surface ratios). Elevation enters through the
+ * free-atmosphere lapse rate.
+ *
  * @param surfaceElevation Surface elevation (m)
- * @param T_atm_delta User temperature offset (°C)
+ * @param T_atm_delta Global temperature offset (°C)
  * @returns Surface temperature (°C)
  */
 export function surfaceTemperature(
@@ -126,8 +131,8 @@ export function surfaceTemperature(
   T_atm_delta: number,
   T_atm_base: number = T_ATM_BASE,
 ): number {
-  // Apply lapse rate: temperature decreases with elevation
-  return T_atm_base + T_atm_delta - LAPSE_RATE * surfaceElevation / 1000;
+  return T_atm_base + T_atm_delta * POLAR_AMPLIFICATION
+       - LAPSE_RATE * surfaceElevation / 1000;
 }
 
 /**

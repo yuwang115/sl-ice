@@ -8,14 +8,24 @@
  *   N(x) = ρ_i g H(x) * (1 - k_w * W(x))
  *
  * Saturation evolution:
- *   ∂W/∂t = m_w / W* - W / τ_drain + D_w ∂²W/∂x²
+ *   ∂W/∂t = m_w / W* - W * k_drain + D_w ∂²W/∂x²
  *
  * where:
  *   W = normalized subglacial water amount (0 = dry, 1 = saturated)
- *   m_w = basal meltwater production (m/yr water equivalent)
+ *   m_w = total basal water source (grounded basal melt + surface melt
+ *         routed to the bed via crevasses / moulins; m/yr water equiv.)
  *   W* = characteristic water-layer thickness
- *   τ_drain = drainage timescale (user-controlled)
+ *   k_drain = drainage rate [1/yr] = params.drain_efficiency (user-controlled;
+ *             higher value → faster drainage → lower W → higher N → slower sliding)
  *   D_w = effective hydrologic diffusivity
+ *
+ * NOTE on semantics: in earlier revisions `drain_efficiency` was used directly
+ * as the drainage *timescale* (τ), which inverted the intuitive meaning — the
+ * UI tooltip promised "lower values → more water pressure", but the math did
+ * the opposite. We now treat `drain_efficiency` as a true rate coefficient:
+ * dW/dt = source − drain_efficiency · W. The steady-state W is
+ * W_eq ≈ source / drain_efficiency, so at the default value 1.0 the
+ * equilibrium is unchanged vs. the old τ = 1 yr behavior.
  */
 
 import {
@@ -23,6 +33,7 @@ import {
   K_WATER, K_HYDRAULIC,
   WATER_LAYER_THICKNESS_SCALE,
   L_FUSION, Q_GEOTHERMAL, C_SLIDING, SLIDING_M,
+  SURFACE_TO_BED_FRACTION,
 } from './constants';
 import { clamp } from './matrix/utils';
 import type { ModelGrid, UserParams } from './types';
@@ -108,10 +119,14 @@ export function evolveHydrology(
   grid: ModelGrid,
   params: UserParams,
   dt: number,
+  surfaceMelt?: Float64Array,
 ): Float64Array {
   const { nx, dx } = grid;
   const W_new = new Float64Array(nx);
-  const tau_drain = Math.max(0.1, params.drain_efficiency);
+  // drain_efficiency is now a true rate coefficient (1/yr): higher → faster
+  // drainage → lower steady-state W. Clamp to avoid a zero denominator in the
+  // equivalent W_eq ≈ source / k_drain.
+  const k_drain = Math.max(0.05, params.drain_efficiency);
 
   for (let i = 0; i < nx; i++) {
     if (is_floating[i]) {
@@ -119,9 +134,13 @@ export function evolveHydrology(
       continue;
     }
 
-    // Source and sink are both expressed as saturation tendency (1/yr).
-    const source = basalMeltWaterEq[i] / WATER_LAYER_THICKNESS_SCALE;
-    const drainage = W[i] / tau_drain;
+    // Source combines grounded basal meltwater (geothermal + friction) with
+    // a fraction of surface melt routed to the bed via crevasses / moulins
+    // (Zwally feedback). Surface melt is the negative part of SMB.
+    const basal = basalMeltWaterEq[i];
+    const sfc = surfaceMelt != null ? Math.max(0, surfaceMelt[i]) * SURFACE_TO_BED_FRACTION : 0;
+    const source = (basal + sfc) / WATER_LAYER_THICKNESS_SCALE;
+    const drainage = W[i] * k_drain;
 
     // No-flux boundaries via mirrored saturation.
     const left = i > 0 ? W[i - 1] : W[i];

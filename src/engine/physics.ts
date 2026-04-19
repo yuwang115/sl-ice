@@ -299,8 +299,15 @@ export function stepPhysics(
 
   // Hydrology
   if (state.params.enable_hydrology) {
+    // Zwally feedback: route a fraction of surface melt (negative SMB) to the
+    // bed as an additional water source.
+    const surfaceMelt = new Float64Array(nx);
+    for (let i = 0; i < nx; i++) {
+      surfaceMelt[i] = state.smb[i] < 0 ? -state.smb[i] : 0;
+    }
     state.W = evolveHydrology(
       state.W, groundedBasalMelt.waterEq, state.is_floating, grid, state.params, dt,
+      surfaceMelt,
     );
     state.N_eff = computeEffectivePressure(state.H, state.W, state.is_floating);
   } else {
