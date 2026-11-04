@@ -3,7 +3,7 @@
  */
 
 import { useGameStore } from '../../store/game-store';
-import { usePhysicsStore } from '../../store/physics-store';
+import { PARAM_SLIDER_RANGES } from '../../store/param-ranges';
 import { useUIStore } from '../../store/ui-store';
 import ParameterSlider from '../controls/ParameterSlider';
 import ToggleSwitch from '../controls/ToggleSwitch';
@@ -60,16 +60,11 @@ const tooltips: Record<string, { en: string; zh: string }> = {
 };
 
 export default function Sidebar() {
-  const { params, setParam } = useGameStore();
-  const updateParams = usePhysicsStore((s) => s.updateParams);
-  const { sidebarOpen, language } = useUIStore();
-
-  const handleChange = (key: keyof typeof params, value: number | boolean) => {
-    setParam(key, value as never);
-    updateParams({ [key]: value });
-  };
-
-  const isZh = language === 'zh';
+  const params = useGameStore((s) => s.params);
+  // The game store mirrors every param change to the worker (useSimulationBridge).
+  const setParam = useGameStore((s) => s.setParam);
+  const sidebarOpen = useUIStore((s) => s.sidebarOpen);
+  const isZh = useUIStore((s) => s.language === 'zh');
 
   const getTooltip = (key: string) => {
     const t = tooltips[key];
@@ -100,12 +95,10 @@ export default function Sidebar() {
           <ParameterSlider
             label={isZh ? '大气温度 ΔT' : 'Atmosphere ΔT'}
             value={params.T_atm_delta}
-            min={-5}
-            max={10}
-            step={0.1}
+            {...PARAM_SLIDER_RANGES.T_atm_delta}
             unit="°C"
             defaultValue={0}
-            onChange={(v) => handleChange('T_atm_delta', v)}
+            onChange={(v) => setParam('T_atm_delta', v)}
             formatValue={(v) => (v >= 0 ? '+' : '') + v.toFixed(1)}
             color={params.T_atm_delta > 0 ? 'var(--accent-warm)' : 'var(--accent-light)'}
             tooltip={getTooltip('T_atm_delta')}
@@ -114,12 +107,10 @@ export default function Sidebar() {
           <ParameterSlider
             label={isZh ? '海洋温度 ΔT' : 'Ocean ΔT'}
             value={params.T_ocean_delta}
-            min={-2}
-            max={5}
-            step={0.1}
+            {...PARAM_SLIDER_RANGES.T_ocean_delta}
             unit="°C"
             defaultValue={0}
-            onChange={(v) => handleChange('T_ocean_delta', v)}
+            onChange={(v) => setParam('T_ocean_delta', v)}
             formatValue={(v) => (v >= 0 ? '+' : '') + v.toFixed(1)}
             color={params.T_ocean_delta > 0 ? 'var(--accent-danger)' : 'var(--accent-light)'}
             tooltip={getTooltip('T_ocean_delta')}
@@ -128,12 +119,10 @@ export default function Sidebar() {
           <ParameterSlider
             label={isZh ? '降雪倍率' : 'Snowfall'}
             value={params.precip_scale}
-            min={0.5}
-            max={2.0}
-            step={0.05}
+            {...PARAM_SLIDER_RANGES.precip_scale}
             unit="x"
             defaultValue={1.0}
-            onChange={(v) => handleChange('precip_scale', v)}
+            onChange={(v) => setParam('precip_scale', v)}
             color="var(--text-secondary)"
             tooltip={getTooltip('precip_scale')}
           />
@@ -148,12 +137,10 @@ export default function Sidebar() {
           <ParameterSlider
             label={isZh ? '排水效率' : 'Drainage'}
             value={params.drain_efficiency}
-            min={0.1}
-            max={5.0}
-            step={0.1}
+            {...PARAM_SLIDER_RANGES.drain_efficiency}
             unit="/yr"
             defaultValue={1.0}
-            onChange={(v) => handleChange('drain_efficiency', v)}
+            onChange={(v) => setParam('drain_efficiency', v)}
             color="var(--accent-teal)"
             tooltip={getTooltip('drain_efficiency')}
           />
@@ -172,7 +159,7 @@ export default function Sidebar() {
             </span>
             <ToggleSwitch
               checked={!!params.enable_hydrology}
-              onChange={(v) => handleChange('enable_hydrology', v)}
+              onChange={(v) => setParam('enable_hydrology', v)}
               label={isZh ? '冰下水文' : 'Subglacial Hydrology'}
             />
           </div>
@@ -184,7 +171,7 @@ export default function Sidebar() {
             </span>
             <ToggleSwitch
               checked={!!params.enable_mici}
-              onChange={(v) => handleChange('enable_mici', v)}
+              onChange={(v) => setParam('enable_mici', v)}
               label={isZh ? '冰崖不稳定性' : 'Ice Cliff Instability'}
             />
           </div>
@@ -193,12 +180,10 @@ export default function Sidebar() {
             <ParameterSlider
               label={isZh ? 'MICI 敏感度' : 'MICI Sensitivity'}
               value={params.mici_sensitivity ?? 1.0}
-              min={0.1}
-              max={3.0}
-              step={0.1}
+              {...PARAM_SLIDER_RANGES.mici_sensitivity}
               unit="x"
               defaultValue={1.0}
-              onChange={(v) => handleChange('mici_sensitivity', v)}
+              onChange={(v) => setParam('mici_sensitivity', v)}
               color="var(--accent-warm)"
               tooltip={getTooltip('mici_sensitivity')}
             />
@@ -215,21 +200,17 @@ export default function Sidebar() {
             <ParameterSlider
               label={isZh ? '屏障位置' : 'Barrier Position'}
               value={params.curtain_position || 0}
-              min={0}
-              max={800}
-              step={10}
+              {...PARAM_SLIDER_RANGES.curtain_position}
               unit=" km"
-              onChange={(v) => handleChange('curtain_position', v)}
+              onChange={(v) => setParam('curtain_position', v)}
               color="var(--accent-warm)"
             />
             <ParameterSlider
               label={isZh ? '屏障效率' : 'Barrier Efficiency'}
               value={params.curtain_efficiency || 0}
-              min={0}
-              max={1}
-              step={0.05}
+              {...PARAM_SLIDER_RANGES.curtain_efficiency}
               unit=""
-              onChange={(v) => handleChange('curtain_efficiency', v)}
+              onChange={(v) => setParam('curtain_efficiency', v)}
               formatValue={(v) => (v * 100).toFixed(0) + '%'}
               color="var(--accent-warm)"
             />

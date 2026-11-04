@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useTheme } from './hooks/useTheme';
 import { useScrollReveal } from './hooks/useScrollReveal';
 import { HeroSection } from './components/HeroSection';
+import { PromoCard } from './components/PromoCard';
 import { DemoSection } from './components/DemoSection';
 import { FeatureCards } from './components/FeatureCards';
 import { ChallengeShowcase } from './components/ChallengeShowcase';
@@ -57,6 +58,7 @@ export function LandingPage() {
       </div>
 
       <HeroSection lang={lang} theme={theme} />
+      <PromoCard lang={lang} theme={theme} />
       <DemoSection lang={lang} />
       <FeatureCards lang={lang} />
       <ChallengeShowcase lang={lang} />

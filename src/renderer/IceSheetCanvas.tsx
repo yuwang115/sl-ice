@@ -1,48 +1,77 @@
 /**
  * Main Ice Sheet Canvas — renders the simulation visualization.
+ *
+ * - Sizing: one capped device-pixel ratio sizes the backing store and scales
+ *   the drawing, following container resizes (ResizeObserver) and DPR changes.
+ * - Loop: re-armed before drawing and guarded, so a throwing frame cannot
+ *   freeze the view; passes real frame time to the particle systems; drops to
+ *   ~30 fps while the simulation is paused.
+ * - Input: penguin drags use pointer capture, and end on release anywhere.
  */
 
 import { useRef, useEffect, useCallback } from 'react';
 import { usePhysicsStore } from '../store/physics-store';
 import { useGameStore } from '../store/game-store';
-import { useUIStore } from '../store/ui-store';
-import type { DrawContext } from './draw-bedrock';
-import { drawBedrock } from './draw-bedrock';
-import { drawOcean } from './draw-ocean';
-import { drawIce, drawGroundingLine } from './draw-ice';
-import { drawAxes, drawMISIWarning, drawMICIWarning, drawCliffIndicator, drawVelocityArrows } from './draw-annotations';
-import { drawSnowfall, resetSnowfall } from './particles/snowfall';
-import { drawWaterFlow, resetWaterFlow } from './particles/water-flow';
-import { drawOceanCurrent, resetOceanCurrent } from './particles/ocean-current';
-import { drawCalving, resetCalving, triggerCalving } from './particles/calving';
+import { useUIStore, type OverlayMode } from '../store/ui-store';
+import { resetSnowfall } from './particles/snowfall';
+import { resetWaterFlow } from './particles/water-flow';
+import { resetOceanCurrent } from './particles/ocean-current';
+import { resetCalving } from './particles/calving';
 import {
-  drawPenguins, resetPenguins, spawnInitialPenguins,
+  resetPenguins, hasDraggedPenguin,
   handlePenguinMouseDown, handlePenguinMouseMove, handlePenguinMouseUp,
   handlePenguinClick, handlePenguinDoubleClick, penguinCursorState,
 } from './particles/penguins';
-import { drawStrainRateHeatmap, drawVelocityProfiles, drawIsochrones, drawTracerParticles, resetTracerParticles } from './draw-internal-flow';
-import { getShakeOffset } from './effects/screen-shake';
-import { drawGlow } from './effects/pulse-glow';
-import { drawCanvasTooltips, clearPreparedCache } from './draw-canvas-tooltips';
-import { drawStatusHUD } from './draw-status-hud';
-import type { HoverPosition } from './draw-canvas-tooltips';
-import type { OverlayMode } from '../store/ui-store';
+import { resetTracerParticles } from './draw-internal-flow';
+import { clearPreparedCache, type HoverPosition } from './draw-canvas-tooltips';
+import { invalidateTextLayoutOnFontLoad } from './canvas-text';
+import { computeCanvasSize, sameCanvasSize, watchDevicePixelRatio, type CanvasSize } from './canvas-sizing';
+import { normalizeFrameDelta, PAUSED_FRAME_INTERVAL_MS, REFERENCE_FRAME_S, shouldRenderFrame } from './frame-timing';
+import { resetFrameGeometryCache } from './frame-geometry';
+import { createStaticLayerCache } from './static-layer-cache';
+import { createFrameRendererState, renderFrame, type FrameRendererState } from './render-frame';
+
+type PhysicsSnapshot = ReturnType<typeof usePhysicsStore.getState>;
+
+/** Paused (or nothing to simulate) and no penguin being dragged → throttle the loop. */
+function isSimulationIdle(hasState: boolean): boolean {
+  if (!hasState) return true;
+  const { isRunning, stepsPerFrame } = useGameStore.getState();
+  return (!isRunning || stepsPerFrame === 0) && !hasDraggedPenguin();
+}
+
+/** Recover from an exception mid-frame: drop the save stack, clip and transform. */
+function resetCanvasContext(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d');
+  if (ctx && typeof ctx.reset === 'function') {
+    ctx.reset();
+    return;
+  }
+  // Re-assigning the size resets the bitmap and all context state.
+  const { width } = canvas;
+  canvas.width = width;
+}
+
+function resetParticleSystems(): void {
+  resetSnowfall();
+  resetWaterFlow();
+  resetOceanCurrent();
+  resetCalving();
+  resetTracerParticles();
+  resetPenguins();
+}
 
 export default function IceSheetCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animFrameRef = useRef<number>(0);
-  const physicsStateRef = useRef<ReturnType<typeof usePhysicsStore.getState>['state']>(null);
-  const scenarioRef = useRef<ReturnType<typeof usePhysicsStore.getState>['scenario']>(null);
+  const sizeRef = useRef<CanvasSize | null>(null);
+  const physicsStateRef = useRef<PhysicsSnapshot['state']>(null);
+  const scenarioRef = useRef<PhysicsSnapshot['scenario']>(null);
   const paramsRef = useRef(useGameStore.getState().params);
-  const xPositionCacheRef = useRef<{ key: string; positions: Float64Array } | null>(null);
-  const prevIceFrontRef = useRef<number>(-1);
-  const lastCalvingSpawnRef = useRef<number>(0);
-  const penguinSpawnedRef = useRef(false);
-  const dcRef = useRef<DrawContext | null>(null);
   const overlayModeRef = useRef<OverlayMode>('none');
   const hoverRef = useRef<HoverPosition | null>(null);
   const languageRef = useRef<'en' | 'zh'>('en');
   const showTooltipsRef = useRef(true);
+  const frameStateRef = useRef<FrameRendererState | null>(null);
 
   const physicsState = usePhysicsStore((s) => s.state);
   const scenario = usePhysicsStore((s) => s.scenario);
@@ -60,7 +89,7 @@ export default function IceSheetCanvas() {
     scenarioRef.current = scenario;
     // Reset penguins when scenario changes so they respawn on new ice
     resetPenguins();
-    penguinSpawnedRef.current = false;
+    if (frameStateRef.current) frameStateRef.current.penguinsSpawned = false;
   }, [scenario]);
 
   useEffect(() => {
@@ -82,6 +111,9 @@ export default function IceSheetCanvas() {
     showTooltipsRef.current = showCanvasTooltips;
   }, [showCanvasTooltips]);
 
+  // Layouts measured before the web fonts arrived must be re-measured.
+  useEffect(() => invalidateTextLayoutOnFontLoad(), []);
+
   // Helper: update canvas cursor style directly (avoids React re-render)
   const syncCursor = useCallback(() => {
     const canvas = canvasRef.current;
@@ -90,281 +122,170 @@ export default function IceSheetCanvas() {
     if (canvas.style.cursor !== cur) canvas.style.cursor = cur;
   }, []);
 
-  // Mouse hover tracking (refs only — no React re-renders)
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  const toCanvasPoint = useCallback((clientX: number, clientY: number): HoverPosition | null => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    hoverRef.current = { x: cx, y: cy };
-    handlePenguinMouseMove(cx, cy);
-    syncCursor();
-  }, [syncCursor]);
-
-  const handleMouseLeave = useCallback(() => {
-    hoverRef.current = null;
+    return { x: clientX - rect.left, y: clientY - rect.top };
   }, []);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    handlePenguinMouseDown(e.clientX - rect.left, e.clientY - rect.top);
-    syncCursor();
-  }, [syncCursor]);
-
-  const handleMouseUp = useCallback(() => {
+  /** Drop a dragged penguin (no-op when none is being dragged). */
+  const endPenguinDrag = useCallback(() => {
+    if (!hasDraggedPenguin()) return;
     handlePenguinMouseUp();
     syncCursor();
   }, [syncCursor]);
 
+  // Pointer tracking (refs only — no React re-renders)
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    const point = toCanvasPoint(e.clientX, e.clientY);
+    if (!point) return;
+    hoverRef.current = point;
+    handlePenguinMouseMove(point.x, point.y);
+    syncCursor();
+  }, [syncCursor, toCanvasPoint]);
+
+  const handlePointerLeave = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    hoverRef.current = null;
+    // With pointer capture the drag continues outside the canvas; without it, end it here.
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) endPenguinDrag();
+  }, [endPenguinDrag]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.button !== 0) return;
+    const point = toCanvasPoint(e.clientX, e.clientY);
+    if (!point) return;
+    if (handlePenguinMouseDown(point.x, point.y)) {
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Capture is best effort; the window listeners below still end the drag.
+      }
+    }
+    syncCursor();
+  }, [syncCursor, toCanvasPoint]);
+
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    handlePenguinClick(e.clientX - rect.left, e.clientY - rect.top);
-  }, []);
+    const point = toCanvasPoint(e.clientX, e.clientY);
+    if (point) handlePenguinClick(point.x, point.y);
+  }, [toCanvasPoint]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    handlePenguinDoubleClick(e.clientX - rect.left, e.clientY - rect.top);
-  }, []);
+    const point = toCanvasPoint(e.clientX, e.clientY);
+    if (point) handlePenguinDoubleClick(point.x, point.y);
+  }, [toCanvasPoint]);
 
-  // Resize handler
+  // Fallback: a release anywhere (or losing focus) always ends a drag.
   useEffect(() => {
-    const handleResize = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const parent = canvas.parentElement;
-      if (!parent) return;
-      const w = parent.clientWidth;
-      const h = parent.clientHeight;
-      canvas.width = w * window.devicePixelRatio;
-      canvas.height = h * window.devicePixelRatio;
-      canvas.style.width = `${w}px`;
-      canvas.style.height = `${h}px`;
-      setCanvasSize(w, h);
+    window.addEventListener('pointerup', endPenguinDrag);
+    window.addEventListener('pointercancel', endPenguinDrag);
+    window.addEventListener('blur', endPenguinDrag);
+    return () => {
+      window.removeEventListener('pointerup', endPenguinDrag);
+      window.removeEventListener('pointercancel', endPenguinDrag);
+      window.removeEventListener('blur', endPenguinDrag);
+    };
+  }, [endPenguinDrag]);
+
+  // Size the backing store with the same capped DPR used for drawing
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const parent = canvas?.parentElement;
+    if (!canvas || !parent) return undefined;
+
+    const applySize = () => {
+      const size = computeCanvasSize(parent.clientWidth, parent.clientHeight, window.devicePixelRatio);
+      if (sameCanvasSize(sizeRef.current, size)) return;
+      sizeRef.current = size;
+      canvas.width = size.pixelWidth;
+      canvas.height = size.pixelHeight;
+      canvas.style.width = `${size.cssWidth}px`;
+      canvas.style.height = `${size.cssHeight}px`;
+      setCanvasSize(size.cssWidth, size.cssHeight);
     };
 
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    applySize();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(applySize) : null;
+    observer?.observe(parent);
+    window.addEventListener('resize', applySize);
+    const stopWatchingDpr = watchDevicePixelRatio(applySize);
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', applySize);
+      stopWatchingDpr();
+    };
   }, [setCanvasSize]);
 
   // Main render loop
-  const render = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const physicsState = physicsStateRef.current;
-    const scenario = scenarioRef.current;
-    const params = paramsRef.current;
-
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = canvas.width;
-    const h = canvas.height;
-
-    ctx.save();
-    ctx.scale(dpr, dpr);
-
-    const displayW = w / dpr;
-    const displayH = h / dpr;
-
-    // Clear with background color
-    ctx.fillStyle = '#0A1628';
-    ctx.fillRect(0, 0, displayW, displayH);
-
-    if (!physicsState || !scenario) {
-      // Draw placeholder
-      ctx.font = '18px sans-serif';
-      ctx.fillStyle = '#E0E0E0';
-      ctx.textAlign = 'center';
-      ctx.fillText('Select a mode to begin simulation', displayW / 2, displayH / 2);
-      ctx.restore();
-      animFrameRef.current = requestAnimationFrame(render);
-      return;
-    }
-
-    // Compute domain extents
-    const domainLen = scenario.domain_length * 1000; // km to m
-    const xMin = 0;
-    const xMax = domainLen;
-
-    // Find z range from data
-    let zMin = -1500;
-    let zMax = 4000;
-    if (physicsState.b && physicsState.s) {
-      let minB = 0, maxS = 0;
-      for (let i = 0; i < physicsState.b.length; i++) {
-        if (physicsState.b[i] < minB) minB = physicsState.b[i];
-        if (physicsState.s[i] > maxS) maxS = physicsState.s[i];
-      }
-      zMin = minB - 200;
-      zMax = Math.max(maxS + 500, 500);
-    }
-
-    // Apply screen shake
-    const shake = getShakeOffset();
-    ctx.translate(shake.x, shake.y);
-
-    const dc: DrawContext = {
-      ctx,
-      width: displayW,
-      height: displayH,
-      xMin, xMax, zMin, zMax,
-    };
-
-    // Compute x positions
-    const nx = physicsState.H.length;
-    const cacheKey = `${domainLen}:${nx}`;
-    let xPositions = xPositionCacheRef.current?.key === cacheKey
-      ? xPositionCacheRef.current.positions
-      : null;
-    if (!xPositions) {
-      xPositions = new Float64Array(nx);
-      const dx = domainLen / (nx - 1);
-      for (let i = 0; i < nx; i++) {
-        xPositions[i] = i * dx;
-      }
-      xPositionCacheRef.current = { key: cacheKey, positions: xPositions };
-    }
-
-    const H = physicsState.H;
-    const s = physicsState.s;
-    const b = physicsState.b;
-    const ice_base = physicsState.ice_base;
-    const smb = physicsState.smb;
-    const u_surface = physicsState.u_surface;
-    const water_pressure = physicsState.water_pressure;
-
-    // Build floating mask from physics state
-    const is_floating = new Uint8Array(nx);
-    const gl_pos_m = physicsState.gl_position * 1000;
-    for (let i = 0; i < nx; i++) {
-      is_floating[i] = xPositions[i] > gl_pos_m && H[i] > 10 ? 1 : 0;
-    }
-
-    // ── Draw layers (back to front) ──
-    drawAxes(dc);
-    drawOcean(dc, b, xPositions);
-    drawBedrock(dc, b, xPositions);
-    drawIce(dc, H, s, ice_base, is_floating, xPositions, gl_pos_m);
-
-    // ── Internal flow overlays ──
-    const currentOverlay = overlayModeRef.current;
-    if (currentOverlay !== 'none' && physicsState.u_2d) {
-      const { u_2d, nz: pNz, dsigma: pDsigma } = physicsState;
-      switch (currentOverlay) {
-        case 'strain':
-          drawStrainRateHeatmap(dc, u_2d, H, ice_base, xPositions, nx, pNz, pDsigma);
-          break;
-        case 'profiles':
-          drawVelocityProfiles(dc, u_2d, H, s, ice_base, xPositions, nx, pNz, pDsigma);
-          break;
-        case 'isochrones':
-          drawIsochrones(dc, u_2d, H, s, ice_base, xPositions, nx, pNz, pDsigma);
-          break;
-        case 'tracers':
-          drawTracerParticles(dc, u_2d, H, s, ice_base, xPositions, nx, pNz, pDsigma);
-          break;
-      }
-    }
-
-    drawGroundingLine(dc, gl_pos_m, b, xPositions);
-    drawVelocityArrows(dc, u_surface, s, H, xPositions);
-
-    // ── Penguins (on ice surface) ──
-    dcRef.current = dc;
-    if (!penguinSpawnedRef.current) {
-      spawnInitialPenguins(s, xPositions, gl_pos_m);
-      penguinSpawnedRef.current = true;
-    }
-    drawPenguins(dc, H, s, u_surface, xPositions, gl_pos_m);
-
-    // ── Particle systems ──
-    drawSnowfall(dc, smb, s, xPositions, params.precip_scale);
-    if (params.enable_hydrology) {
-      drawWaterFlow(dc, water_pressure, b, H, xPositions, is_floating);
-    }
-    drawOceanCurrent(dc, is_floating, b, H, xPositions, params.T_ocean_delta);
-
-    // ── Auto-spawn icebergs when ice front retreats ──
-    {
-      let iceFrontIdx = -1;
-      for (let i = H.length - 1; i >= 0; i--) {
-        if (H[i] >= 50) { iceFrontIdx = i; break; }
-      }
-      const now = Date.now();
-      if (iceFrontIdx >= 0 && prevIceFrontRef.current >= 0) {
-        const retreated = prevIceFrontRef.current > iceFrontIdx;
-        const hasVelocity = iceFrontIdx < u_surface.length && u_surface[iceFrontIdx] > 100;
-        if (retreated && now - lastCalvingSpawnRef.current > 800) {
-          triggerCalving(xPositions[iceFrontIdx], s[iceFrontIdx], 3 + Math.floor(Math.random() * 4));
-          lastCalvingSpawnRef.current = now;
-        } else if (hasVelocity && now - lastCalvingSpawnRef.current > 2000) {
-          // Steady-state calving: occasional small icebergs at the terminus
-          triggerCalving(xPositions[iceFrontIdx], s[iceFrontIdx], 1 + Math.floor(Math.random() * 2));
-          lastCalvingSpawnRef.current = now;
-        }
-      }
-      prevIceFrontRef.current = iceFrontIdx;
-    }
-
-    drawCalving(dc);
-
-    // ── MICI cliff indicator ──
-    if (physicsState.is_mici_active) {
-      drawCliffIndicator(dc, physicsState.cliff_height, physicsState.mici_calving_rate, H, s, ice_base, xPositions);
-    }
-
-    // ── Effects ──
-    const lang = languageRef.current;
-    if (physicsState.is_misi_active) {
-      drawMISIWarning(dc, lang);
-    }
-    if (physicsState.is_mici_active) {
-      drawMICIWarning(dc, lang);
-    }
-    drawGlow(ctx, displayW, displayH);
-
-    // ── Pretext-powered overlays ──
-    if (showTooltipsRef.current) {
-      drawCanvasTooltips(dc, physicsState, xPositions, hoverRef.current, lang);
-      drawStatusHUD(dc, physicsState, lang);
-    }
-
-    ctx.restore();
-    animFrameRef.current = requestAnimationFrame(render);
-  }, []);
-
   useEffect(() => {
-    animFrameRef.current = requestAnimationFrame(render);
-    return () => {
-      cancelAnimationFrame(animFrameRef.current);
-      resetSnowfall();
-      resetWaterFlow();
-      resetOceanCurrent();
-      resetCalving();
-      resetTracerParticles();
-      resetPenguins();
-      penguinSpawnedRef.current = false;
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+
+    const frameState = createFrameRendererState(createStaticLayerCache());
+    frameStateRef.current = frameState;
+    let frameId = 0;
+    let lastDrawn: number | null = null;
+    let errorLogged = false;
+
+    const drawFrame = (dt: number) => {
+      const ctx = canvas.getContext('2d');
+      const size = sizeRef.current;
+      if (!ctx || !size) return;
+      renderFrame(ctx, {
+        size,
+        physicsState: physicsStateRef.current,
+        scenario: scenarioRef.current,
+        params: paramsRef.current,
+        overlayMode: overlayModeRef.current,
+        hover: hoverRef.current,
+        language: languageRef.current,
+        showTooltips: showTooltipsRef.current,
+        dt,
+      }, frameState);
     };
-  }, [render]);
+
+    const loop = (now: number) => {
+      // Re-arm first: an exception below must not stop the animation for good.
+      frameId = requestAnimationFrame(loop);
+
+      const minInterval = isSimulationIdle(physicsStateRef.current !== null) ? PAUSED_FRAME_INTERVAL_MS : 0;
+      if (!shouldRenderFrame(now, lastDrawn, minInterval)) return;
+      const dt = lastDrawn === null ? REFERENCE_FRAME_S : normalizeFrameDelta(now - lastDrawn);
+      lastDrawn = now;
+
+      try {
+        drawFrame(dt);
+      } catch (error) {
+        if (!errorLogged) {
+          errorLogged = true;
+          console.error('[IceSheetCanvas] frame render failed; continuing with the next frame', error);
+        }
+        resetCanvasContext(canvas);
+      }
+    };
+
+    frameId = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(frameId);
+      frameState.staticLayers.release();
+      frameStateRef.current = null;
+      resetParticleSystems();
+      resetFrameGeometryCache();
+    };
+  }, []);
 
   return (
     <canvas
       ref={canvasRef}
       className="w-full h-full block"
       style={{ background: '#0A1628' }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+      onPointerDown={handlePointerDown}
+      onPointerUp={endPenguinDrag}
+      onPointerCancel={endPenguinDrag}
+      onLostPointerCapture={endPenguinDrag}
       onClick={handleCanvasClick}
       onDoubleClick={handleDoubleClick}
     />

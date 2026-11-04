@@ -2,104 +2,98 @@
  * Camera animation for the slice transition.
  * Smoothly flies the camera toward the target flowline point,
  * then adds a glow effect at the intersection.
+ *
+ * The glow light is always mounted (intensity 0 when idle): adding a light
+ * mid-flight changes the scene's light count, which forces three.js to
+ * recompile every lit program — a multi-second stall on software GL.
  */
 
 import { useRef } from 'react';
 import * as THREE from 'three';
-import { useFrame, useThree } from '@react-three/fiber';
-import { useExplorerStore } from '../../store/explorer-store';
+import { useFrame } from '@react-three/fiber';
+import { useExplorerStore, type TransitionPhase } from '../../store/explorer-store';
+import {
+  clampFrameDelta,
+  computeFlyInEndPosition,
+  flyInFrame,
+} from '../../lib/camera-flyin';
 
-/** Deceleration ease — fast start, gentle stop. */
-function easeOutQuart(t: number): number {
-  return 1 - Math.pow(1 - t, 4);
+interface Flight {
+  readonly target: readonly [number, number, number];
+  readonly startPos: THREE.Vector3;
+  readonly endPos: THREE.Vector3;
+  readonly startLookAt: THREE.Vector3;
+  readonly endLookAt: THREE.Vector3;
+  elapsed: number;
+}
+
+/** The orbit target of the default controls (OrbitControls uses makeDefault). */
+function getOrbitTarget(controls: unknown): THREE.Vector3 | null {
+  if (typeof controls !== 'object' || controls === null || !('target' in controls)) return null;
+  const { target } = controls as { target: unknown };
+  return target instanceof THREE.Vector3 ? target : null;
+}
+
+function beginFlight(
+  camera: THREE.Camera,
+  orbitTarget: THREE.Vector3 | null,
+  target: readonly [number, number, number],
+): Flight {
+  const camPos = camera.position;
+  const end = computeFlyInEndPosition([camPos.x, camPos.y, camPos.z], target);
+  return {
+    target,
+    startPos: camPos.clone(),
+    endPos: new THREE.Vector3(...end),
+    startLookAt: orbitTarget ? orbitTarget.clone() : new THREE.Vector3(),
+    endLookAt: new THREE.Vector3(...target),
+    elapsed: 0,
+  };
+}
+
+function isGlowPhase(phase: TransitionPhase): boolean {
+  return phase === 'camera-zoom' || phase === 'slice';
 }
 
 export default function CameraAnimator() {
-  const { camera } = useThree();
-  const isTransitioning = useExplorerStore((s) => s.isTransitioning);
-  const targetPoint = useExplorerStore((s) => s.transitionTargetPoint);
-  const phase = useExplorerStore((s) => s.transitionPhase);
-
-  // Animation state (refs to avoid re-renders)
-  const startPos = useRef(new THREE.Vector3());
-  const endPos = useRef(new THREE.Vector3());
-  const startLookAt = useRef(new THREE.Vector3(0, 0, 0));
-  const endLookAt = useRef(new THREE.Vector3());
-  const tmpLookAt = useRef(new THREE.Vector3());
-  const elapsed = useRef(0);
-  const initialized = useRef(false);
-
   const lightRef = useRef<THREE.PointLight>(null);
-
-  const CAMERA_DURATION = 1.4; // seconds
+  const flightRef = useRef<Flight | null>(null);
+  const lookAtRef = useRef(new THREE.Vector3());
 
   useFrame((state, delta) => {
-    if (!isTransitioning || !targetPoint) {
-      if (initialized.current) {
-        initialized.current = false;
-        elapsed.current = 0;
-      }
+    const { isTransitioning, transitionTargetPoint: target, transitionPhase } = useExplorerStore.getState();
+    const light = lightRef.current;
+
+    if (!isTransitioning || !target) {
+      flightRef.current = null;
+      if (light) light.intensity = 0;
       return;
     }
 
-    // Initialize on first frame of animation
-    if (!initialized.current) {
-      initialized.current = true;
-      elapsed.current = 0;
-      startPos.current.copy(camera.position);
-      endLookAt.current.set(targetPoint[0], targetPoint[1], targetPoint[2]);
-
-      // Current orbit target as start look-at
-      const controls = state.controls as unknown as { target?: THREE.Vector3 };
-      if (controls?.target) {
-        startLookAt.current.copy(controls.target);
-      } else {
-        startLookAt.current.set(0, 0, 0);
-      }
-
-      // End position: 8 units from the target, along the current viewing direction
-      const dir = new THREE.Vector3()
-        .subVectors(camera.position, endLookAt.current)
-        .normalize();
-      endPos.current.copy(endLookAt.current).addScaledVector(dir, 8);
+    const orbitTarget = getOrbitTarget(state.controls);
+    if (!flightRef.current || flightRef.current.target !== target) {
+      flightRef.current = beginFlight(state.camera, orbitTarget, target);
     }
+    const flight = flightRef.current;
+    flight.elapsed += clampFrameDelta(delta);
+    const frame = flyInFrame(flight.elapsed);
 
-    elapsed.current += delta;
-    const rawT = Math.min(1, elapsed.current / CAMERA_DURATION);
-    const t = easeOutQuart(rawT);
+    state.camera.position.lerpVectors(flight.startPos, flight.endPos, frame.positionT);
+    lookAtRef.current.lerpVectors(flight.startLookAt, flight.endLookAt, frame.lookAtT);
+    state.camera.lookAt(lookAtRef.current);
 
-    // Smoothly interpolate camera position
-    camera.position.lerpVectors(startPos.current, endPos.current, t);
+    // Keep the orbit target in sync so the controls resume from here.
+    orbitTarget?.copy(lookAtRef.current);
 
-    // Look-at converges faster than position for a cinematic pull
-    const lookAtT = easeOutQuart(Math.min(1, rawT * 1.3));
-    tmpLookAt.current.lerpVectors(startLookAt.current, endLookAt.current, lookAtT);
-    camera.lookAt(tmpLookAt.current);
-
-    // Keep orbit controls target in sync (if they re-enable later)
-    const controls = state.controls as unknown as { target?: THREE.Vector3 };
-    if (controls?.target) {
-      controls.target.copy(tmpLookAt.current);
-    }
-
-    // Ramp up the glow light at the target point
-    if (lightRef.current) {
-      lightRef.current.intensity = Math.min(6, rawT * 8);
+    if (light) {
+      light.position.copy(flight.endLookAt);
+      light.intensity = isGlowPhase(transitionPhase) ? frame.glow : 0;
     }
   });
-
-  // Render a point light at the target for a warm glow during zoom + slice
-  const showGlow =
-    isTransitioning &&
-    targetPoint &&
-    (phase === 'camera-zoom' || phase === 'slice');
-
-  if (!showGlow) return null;
 
   return (
     <pointLight
       ref={lightRef}
-      position={[targetPoint[0], targetPoint[1], targetPoint[2]]}
       color="#38bdf8"
       intensity={0}
       distance={30}

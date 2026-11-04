@@ -2,6 +2,7 @@
  * Fetch and decode Antarctic ice velocity binary data.
  * Returns vx, vy, computed speed, and a validity mask.
  */
+import { BASE } from '../../base';
 
 import {
   decodeInt16Field,
@@ -22,7 +23,7 @@ export interface VelocityData {
  * Load velocity binary + metadata, computing speed magnitude from vx/vy.
  */
 export async function loadVelocity(
-  basePath = '/3d-ice/data/antarctic_ice_velocity_phase_v01_480',
+  basePath = `${BASE}/3d-ice/data/antarctic_ice_velocity_phase_v01_480`,
 ): Promise<VelocityData> {
   const [metaResponse, binResponse] = await Promise.all([
     fetch(`${basePath}.meta.json`),

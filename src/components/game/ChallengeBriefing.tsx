@@ -3,20 +3,29 @@
  * Typewriter effect for narrative immersion, skippable.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { useUIStore } from '../../store/ui-store';
+import type { LocalizedMessage } from '../../store/game-store';
 import { getNarrative } from '../../challenges/narrative';
 import { challenges } from '../../challenges';
+import ErrorNotice from '../ui/ErrorNotice';
 
 interface ChallengeBriefingProps {
   challengeId: number;
   onStart: () => void;
   onCancel: () => void;
+  /** The scenario is being fetched; Begin is disabled meanwhile. */
+  isLaunching?: boolean;
+  /** Why the last Begin failed; Begin retries. */
+  error?: LocalizedMessage | null;
 }
 
-export default function ChallengeBriefing({ challengeId, onStart, onCancel }: ChallengeBriefingProps) {
+export default function ChallengeBriefing({
+  challengeId, onStart, onCancel, isLaunching = false, error = null,
+}: ChallengeBriefingProps) {
   const language = useUIStore((s) => s.language);
   const isZh = language === 'zh';
+  const titleId = useId();
 
   const narrative = getNarrative(challengeId);
   const challenge = challenges.find((c) => c.id === challengeId);
@@ -70,6 +79,15 @@ export default function ChallengeBriefing({ challengeId, onStart, onCancel }: Ch
     setIsComplete(true);
   }, [fullText]);
 
+  // Esc behaves like Back
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
+
   if (!challenge) return null;
 
   return (
@@ -78,6 +96,9 @@ export default function ChallengeBriefing({ challengeId, onStart, onCancel }: Ch
       style={{ background: 'rgba(0,0,0,0.7)' }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className="glass-panel rounded-2xl p-8 max-w-lg w-full mx-4"
         style={{ animation: 'ghibli-fade-in 0.4s ease-out' }}
       >
@@ -89,7 +110,7 @@ export default function ChallengeBriefing({ challengeId, onStart, onCancel }: Ch
           >
             {isZh ? `挑战 ${challengeId}` : `Challenge ${challengeId}`}
           </span>
-          <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+          <h2 id={titleId} className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
             {isZh ? challenge.name_zh : challenge.name_en}
           </h2>
         </div>
@@ -104,6 +125,8 @@ export default function ChallengeBriefing({ challengeId, onStart, onCancel }: Ch
             <span className="inline-block w-[2px] h-[1em] ml-0.5 align-middle" style={{ background: 'var(--accent)', animation: 'gentle-breathe 1s ease-in-out infinite' }} />
           )}
         </div>
+
+        {error && <ErrorNotice message={error} className="mb-4" />}
 
         {/* Actions */}
         <div className="flex gap-3">
@@ -124,6 +147,7 @@ export default function ChallengeBriefing({ challengeId, onStart, onCancel }: Ch
           )}
           <button
             onClick={onStart}
+            disabled={isLaunching}
             className="pill-btn text-sm flex-1"
             style={{
               background: isComplete ? 'var(--accent)' : 'var(--bg-secondary)',
@@ -132,7 +156,9 @@ export default function ChallengeBriefing({ challengeId, onStart, onCancel }: Ch
               transition: 'all 0.3s ease',
             }}
           >
-            {isZh ? '开始挑战' : 'Begin Challenge'}
+            {isLaunching
+              ? (isZh ? '加载中…' : 'Loading…')
+              : (isZh ? '开始挑战' : 'Begin Challenge')}
           </button>
         </div>
       </div>

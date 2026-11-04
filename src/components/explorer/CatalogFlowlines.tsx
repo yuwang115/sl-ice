@@ -1,16 +1,28 @@
 /**
- * Render 100 Antarctic flowlines as interactive 3D lines.
- * Each line can be hovered (brighten) and clicked (select/activate).
+ * Render the catalog's Antarctic flowlines as interactive 3D lines.
+ * Each line can be hovered (brighten) and clicked (select / double-click to activate).
+ *
+ * Lines stay mounted while the layer is hidden (`visible` toggles, so the
+ * line material is not recompiled); hidden lines are excluded from raycasting.
+ * Picking ignores hits whose view ray passes through terrain, so a line hidden
+ * behind a ridge does not highlight.
  */
 
-import { useMemo, useCallback, useRef, useEffect } from 'react';
+import { useMemo, useCallback, useEffect } from 'react';
 import * as THREE from 'three';
 import { Line } from '@react-three/drei';
+import type { ThreeEvent } from '@react-three/fiber';
 import { useExplorerStore } from '../../store/explorer-store';
 import { getFlowlineLineAppearance } from '../../lib/explorer-interactions';
+import { createDoubleClickTracker } from '../../lib/double-click-tracker';
 import { projectFlowlinePath } from '../../lib/terrain/projection';
+import {
+  buildOccluderHeights,
+  createHeightSampler,
+  isSegmentOccluded,
+  type Vec3Like,
+} from '../../lib/terrain/terrain-occlusion';
 import type { FlowlineCatalogEntry } from '../game/FlowlineListPanel';
-import type { ThreeEvent } from '@react-three/fiber';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -24,39 +36,23 @@ interface CatalogFlowlinesProps {
   catalog: FlowlineCatalogEntry[];
 }
 
-// ── Main Component ───────────────────────────────────────────────────
+interface FlowlinePointerHandlers {
+  onHover: (id: string, event: ThreeEvent<PointerEvent>) => void;
+  onLeave: (id: string, event: ThreeEvent<PointerEvent>) => void;
+  onClick: (id: string, event: ThreeEvent<MouseEvent>) => void;
+}
 
-export default function CatalogFlowlines({ catalog }: CatalogFlowlinesProps) {
-  const hoveredId = useExplorerStore((s) => s.hoveredFlowlineId);
-  const selectedId = useExplorerStore((s) => s.selectedFlowlineId);
-  const setHovered = useExplorerStore((s) => s.setHoveredFlowline);
-  const setSelected = useExplorerStore((s) => s.setSelectedFlowline);
-  const startTransition = useExplorerStore((s) => s.startTransition);
-  const isTransitioning = useExplorerStore((s) => s.isTransitioning);
-  const transitionFlowlineId = useExplorerStore((s) => s.transitionFlowlineId);
-  const showFlowlines = useExplorerStore((s) => s.showFlowlines);
-  const exaggeration = useExplorerStore((s) => s.exaggeration);
+const meshRaycast = THREE.Mesh.prototype.raycast;
+const noRaycast: THREE.Mesh['raycast'] = () => undefined;
 
-  const surfaceHeights = useExplorerStore((s) => s.surfaceHeights);
-  const gridNx = useExplorerStore((s) => s.gridNx);
-  const gridNy = useExplorerStore((s) => s.gridNy);
-  const hScale = useExplorerStore((s) => s.horizontalMetersPerUnit);
-  const vScale = useExplorerStore((s) => s.verticalMetersPerUnit);
+// ── Hooks ────────────────────────────────────────────────────────────
 
-  // Read grid params from the loaded bedmachine meta (stored alongside surfaceHeights)
-  // We need x0_m, y0_m, dx_m, dy_m — these are fixed for the 480 dataset
-  const gridParams = useMemo(() => ({
-    x0_m: -3_333_000,
-    y0_m: 3_333_000,
-    dx_m: 10_000,
-    dy_m: -10_000,
-    nx: gridNx,
-    ny: gridNy,
-  }), [gridNx, gridNy]);
+function useFlowlinePaths(catalog: FlowlineCatalogEntry[]): FlowlinePath[] {
+  const terrain = useExplorerStore((s) => s.terrain);
 
-  // Project all flowline paths to 3D scene coordinates
-  const flowlinePaths = useMemo<FlowlinePath[]>(() => {
-    if (!surfaceHeights || gridNx === 0) return [];
+  return useMemo<FlowlinePath[]>(() => {
+    if (!terrain) return [];
+    const { grid } = terrain;
 
     return catalog
       .filter((entry) => entry.path_lonlat && entry.path_lonlat.length >= 2)
@@ -64,21 +60,119 @@ export default function CatalogFlowlines({ catalog }: CatalogFlowlinesProps) {
         id: entry.id,
         points: projectFlowlinePath(
           entry.path_lonlat,
-          gridParams,
-          hScale,
-          vScale,
-          surfaceHeights,
-          gridNx,
-          gridNy,
+          grid,
+          terrain.horizontalMetersPerUnit,
+          terrain.verticalMetersPerUnit,
+          terrain.surfaceHeights,
+          grid.nx,
+          grid.ny,
         ),
         color: entry.color || '#3b82f6',
       }));
-  }, [catalog, surfaceHeights, gridParams, hScale, vScale, gridNx, gridNy]);
+  }, [catalog, terrain]);
+}
 
-  if (!showFlowlines || flowlinePaths.length === 0) return null;
+/** Returns a test telling whether a pick hit is visible (not behind terrain). */
+function useHitVisibility(): (origin: Vec3Like, point: Vec3Like) => boolean {
+  const terrain = useExplorerStore((s) => s.terrain);
+  const showIce = useExplorerStore((s) => s.showIce);
+  const exaggeration = useExplorerStore((s) => s.exaggeration);
+
+  const occluderHeights = useMemo(
+    () => (terrain
+      ? buildOccluderHeights(terrain.bedHeights, terrain.surfaceHeights, terrain.thicknessData, showIce)
+      : null),
+    [terrain, showIce],
+  );
+
+  const heightAt = useMemo(
+    () => (terrain && occluderHeights
+      ? createHeightSampler(occluderHeights, {
+        grid: terrain.grid,
+        horizontalMetersPerUnit: terrain.horizontalMetersPerUnit,
+        verticalMetersPerUnit: terrain.verticalMetersPerUnit,
+        exaggeration,
+      })
+      : null),
+    [terrain, occluderHeights, exaggeration],
+  );
+
+  return useCallback(
+    (origin: Vec3Like, point: Vec3Like) => !heightAt || !isSegmentOccluded(origin, point, heightAt),
+    [heightAt],
+  );
+}
+
+function useFlowlinePointerHandlers(): FlowlinePointerHandlers {
+  const setHovered = useExplorerStore((s) => s.setHoveredFlowline);
+  const setSelected = useExplorerStore((s) => s.setSelectedFlowline);
+  const startTransition = useExplorerStore((s) => s.startTransition);
+  const isHitVisible = useHitVisibility();
+  // One shared record: A → B → A within the window is not a double-click.
+  const clickTracker = useMemo(() => createDoubleClickTracker(), []);
+
+  const onHover = useCallback((id: string, event: ThreeEvent<PointerEvent>) => {
+    const state = useExplorerStore.getState();
+    if (state.isTransitioning) {
+      event.stopPropagation();
+      return;
+    }
+    if (!isHitVisible(event.ray.origin, event.point)) {
+      if (state.hoveredFlowlineId === id) setHovered(null);
+      return; // let the event reach whatever is actually visible
+    }
+    event.stopPropagation();
+    if (state.hoveredFlowlineId !== id) setHovered(id);
+  }, [isHitVisible, setHovered]);
+
+  const onLeave = useCallback((id: string, event: ThreeEvent<PointerEvent>) => {
+    event.stopPropagation();
+    const state = useExplorerStore.getState();
+    if (!state.isTransitioning && state.hoveredFlowlineId === id) setHovered(null);
+  }, [setHovered]);
+
+  const onClick = useCallback((id: string, event: ThreeEvent<MouseEvent>) => {
+    if (useExplorerStore.getState().isTransitioning) {
+      event.stopPropagation();
+      return;
+    }
+    if (!isHitVisible(event.ray.origin, event.point)) return;
+    event.stopPropagation();
+
+    if (clickTracker.register(id, performance.now())) {
+      const { x, y, z } = event.point;
+      startTransition(id, [x, y, z]);
+    } else {
+      setSelected(id);
+    }
+  }, [clickTracker, isHitVisible, setSelected, startTransition]);
+
+  return useMemo(() => ({ onHover, onLeave, onClick }), [onHover, onLeave, onClick]);
+}
+
+// ── Main Component ───────────────────────────────────────────────────
+
+export default function CatalogFlowlines({ catalog }: CatalogFlowlinesProps) {
+  const hoveredId = useExplorerStore((s) => s.hoveredFlowlineId);
+  const selectedId = useExplorerStore((s) => s.selectedFlowlineId);
+  const setHovered = useExplorerStore((s) => s.setHoveredFlowline);
+  const isTransitioning = useExplorerStore((s) => s.isTransitioning);
+  const transitionFlowlineId = useExplorerStore((s) => s.transitionFlowlineId);
+  const showFlowlines = useExplorerStore((s) => s.showFlowlines);
+  const exaggeration = useExplorerStore((s) => s.exaggeration);
+
+  const flowlinePaths = useFlowlinePaths(catalog);
+  const handlers = useFlowlinePointerHandlers();
+
+  // A hidden layer must not keep a stale 3D hover highlight.
+  useEffect(() => {
+    if (!showFlowlines) setHovered(null);
+  }, [showFlowlines, setHovered]);
+
+  if (flowlinePaths.length === 0) return null;
 
   return (
-    <group scale={[1, exaggeration, 1]}>
+    <group scale={[1, exaggeration, 1]} visible={showFlowlines}>
       {flowlinePaths.map((fl) => (
         <FlowlineLine
           key={fl.id}
@@ -89,10 +183,8 @@ export default function CatalogFlowlines({ catalog }: CatalogFlowlinesProps) {
           isSelected={fl.id === selectedId}
           isActivating={isTransitioning && fl.id === transitionFlowlineId}
           isFading={isTransitioning && fl.id !== transitionFlowlineId}
-          onHover={setHovered}
-          onSelect={setSelected}
-          onActivate={startTransition}
-          isTransitioning={isTransitioning}
+          pickable={showFlowlines}
+          handlers={handlers}
         />
       ))}
     </group>
@@ -109,20 +201,16 @@ interface FlowlineLineProps {
   isSelected: boolean;
   isActivating: boolean;
   isFading: boolean;
-  isTransitioning: boolean;
-  onHover: (id: string | null) => void;
-  onSelect: (id: string | null) => void;
-  onActivate: (flowlineId: string, targetPoint: [number, number, number] | null) => void;
+  pickable: boolean;
+  handlers: FlowlinePointerHandlers;
 }
 
 function FlowlineLine({
   id, points, color,
   isHovered, isSelected,
-  isActivating, isFading, isTransitioning,
-  onHover, onSelect, onActivate,
+  isActivating, isFading,
+  pickable, handlers,
 }: FlowlineLineProps) {
-  const lastClickRef = useRef(0);
-
   const { lineWidth, lineColor } = getFlowlineLineAppearance({
     color,
     isHovered,
@@ -146,45 +234,9 @@ function FlowlineLine({
     return () => { tubeGeo?.dispose(); };
   }, [tubeGeo]);
 
-  const handlePointerOver = useCallback(
-    (e: ThreeEvent<PointerEvent>) => {
-      e.stopPropagation();
-      if (isTransitioning) return;
-      onHover(id);
-    },
-    [id, onHover, isTransitioning],
-  );
-
-  const handlePointerOut = useCallback(
-    (e: ThreeEvent<PointerEvent>) => {
-      e.stopPropagation();
-      if (isTransitioning) return;
-      onHover(null);
-    },
-    [onHover, isTransitioning],
-  );
-
-  const handleClick = useCallback(
-    (e: ThreeEvent<MouseEvent>) => {
-      e.stopPropagation();
-      if (isTransitioning) return;
-
-      const now = Date.now();
-      // Each FlowlineLine has its own lastClickRef, so the time check
-      // naturally scopes to the same flowline. We avoid checking
-      // `isSelected` (a prop) because R3F may not have re-rendered with
-      // the updated prop between rapid clicks, causing the double-click
-      // to be swallowed.
-      if (now - lastClickRef.current < 500) {
-        const pt = e.point;
-        onActivate(id, [pt.x, pt.y, pt.z]);
-      } else {
-        onSelect(id);
-      }
-      lastClickRef.current = now;
-    },
-    [id, isTransitioning, onSelect, onActivate],
-  );
+  const handleHover = useCallback((e: ThreeEvent<PointerEvent>) => handlers.onHover(id, e), [handlers, id]);
+  const handleLeave = useCallback((e: ThreeEvent<PointerEvent>) => handlers.onLeave(id, e), [handlers, id]);
+  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => handlers.onClick(id, e), [handlers, id]);
 
   if (points.length < 2) return null;
 
@@ -202,8 +254,10 @@ function FlowlineLine({
       {tubeGeo && (
         <mesh
           geometry={tubeGeo}
-          onPointerOver={handlePointerOver}
-          onPointerOut={handlePointerOut}
+          raycast={pickable ? meshRaycast : noRaycast}
+          onPointerOver={handleHover}
+          onPointerMove={handleHover}
+          onPointerOut={handleLeave}
           onClick={handleClick}
           visible={false}
         >

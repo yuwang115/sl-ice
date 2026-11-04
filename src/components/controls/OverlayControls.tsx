@@ -13,9 +13,10 @@ const overlays: { key: OverlayMode; label: string; labelZh: string }[] = [
 ];
 
 export default function OverlayControls() {
-  const { overlayMode, setOverlayMode, language } = useUIStore();
+  const overlayMode = useUIStore((s) => s.overlayMode);
+  const setOverlayMode = useUIStore((s) => s.setOverlayMode);
+  const isZh = useUIStore((s) => s.language === 'zh');
   const setOverlayFlags = usePhysicsStore((s) => s.setOverlayFlags);
-  const isZh = language === 'zh';
 
   const handleToggle = (key: OverlayMode) => {
     const next = overlayMode === key ? 'none' : key;

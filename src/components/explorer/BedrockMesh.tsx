@@ -2,23 +2,12 @@
  * Bedrock surface mesh — GMT Relief colored terrain.
  */
 
-import { useMemo } from 'react';
-import * as THREE from 'three';
 import { useExplorerStore } from '../../store/explorer-store';
+import { useTerrainGeometry } from './useTerrainGeometry';
 
 export default function BedrockMesh() {
-  const bedArrays = useExplorerStore((s) => s.bedArrays);
-
-  const geometry = useMemo(() => {
-    if (!bedArrays) return null;
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(bedArrays.positions, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(bedArrays.colors, 3, true));
-    geo.setIndex(new THREE.BufferAttribute(bedArrays.indices, 1));
-    geo.computeVertexNormals();
-    return geo;
-  }, [bedArrays]);
+  const bedArrays = useExplorerStore((s) => s.terrain?.bed);
+  const geometry = useTerrainGeometry(bedArrays);
 
   if (!geometry) return null;
 

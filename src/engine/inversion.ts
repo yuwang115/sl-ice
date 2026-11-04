@@ -1,32 +1,41 @@
 /**
- * Robin-type iterative basal friction inversion.
+ * Robin-type iterative inversion of the flowline drag fields.
  *
  * Given observed surface velocity u_obs(x) along a flowline, this module
- * derives a spatially-varying basal friction coefficient C(x) that, when
- * used in the Blatter–Pattyn solver, reproduces the observed velocities.
+ * derives two spatially-varying coefficients that, when used in the
+ * Blatter–Pattyn solver, reproduce the observed velocities:
+ *   - C(x): Weertman basal friction under grounded ice
+ *   - γ(x): lateral (side-wall) drag under floating ice, standing in for
+ *           the embayment buttressing a 2D flowline cannot resolve
  *
- * Algorithm (fixed-point iteration):
- *   1. Start with C(x) = C_SLIDING (uniform)
+ * Algorithm (fixed-point iteration, both fields updated together):
+ *   1. Start with C = C_SLIDING, γ = LATERAL_DRAG_DEFAULT
  *   2. Solve BP → extract surface velocity u_model(x)
- *   3. Update: C_new = C_old · (u_obs / u_model)^α   (α = 0.5)
- *   4. Clamp to [C_MIN, C_MAX], apply Gaussian smoothing
+ *   3. Update: X_new = X_old · (u_model / u_obs)^α   (α = 0.5)
+ *   4. Clamp to bounds, apply Gaussian smoothing
  *   5. Check convergence: normalised RMS misfit < tolerance
  *
- * Physics: if u_model > u_obs the ice is too fast, so we increase C to
- * add more basal drag; if too slow, we decrease C.
+ * Physics: if u_model > u_obs the ice is too fast, so we increase the drag;
+ * if too slow, we decrease it.
  */
 
 import {
   C_SLIDING,
   C_BASAL_MIN, C_BASAL_MAX,
+  LATERAL_DRAG_DEFAULT, LATERAL_DRAG_MIN, LATERAL_DRAG_MAX,
   INVERSION_ALPHA, INVERSION_MAX_ITER, INVERSION_TOL,
 } from './constants';
 import { solveBP, surfaceVelocity } from './bp-solver';
 import type { ModelState } from './types';
 
+export interface DragFields {
+  C_basal: Float64Array;
+  lateral_drag: Float64Array;
+}
+
 /**
  * 3-point Gaussian smoothing kernel [0.25, 0.5, 0.25].
- * Prevents checkerboard oscillations in the inverted C field.
+ * Prevents checkerboard oscillations in the inverted fields.
  * No-flux boundaries (mirror edge values).
  */
 function gaussianSmooth(arr: Float64Array): Float64Array {
@@ -41,20 +50,20 @@ function gaussianSmooth(arr: Float64Array): Float64Array {
 }
 
 /**
- * Compute normalised RMS misfit between modelled and observed velocity.
- * Only considers grounded nodes with u_obs > 0.
+ * Normalised RMS misfit between modelled and observed velocity over the
+ * nodes selected by `include` (and u_obs ≥ 1).
  */
 function normalisedRMS(
   u_model: Float64Array,
   u_obs: Float64Array,
-  is_floating: Uint8Array,
+  include: (i: number) => boolean,
 ): number {
   let sumSq = 0;
   let sumObs = 0;
   let count = 0;
 
   for (let i = 0; i < u_obs.length; i++) {
-    if (is_floating[i] || u_obs[i] < 1) continue;
+    if (!include(i) || u_obs[i] < 1) continue;
     const diff = u_model[i] - u_obs[i];
     sumSq += diff * diff;
     sumObs += u_obs[i];
@@ -65,94 +74,145 @@ function normalisedRMS(
   return Math.sqrt(sumSq / count) / (sumObs / count);
 }
 
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
 /**
- * Invert basal friction coefficient C(x) from observed surface velocity.
+ * Overwrite every non-source node with the value of its nearest source node
+ * (ties go upstream). Leaves `values` unchanged when there is no source.
+ */
+function fillNearest(values: Float64Array, isSource: (i: number) => boolean): void {
+  const n = values.length;
+  const left = new Int32Array(n).fill(-1);
+  let last = -1;
+  for (let i = 0; i < n; i++) {
+    if (isSource(i)) last = i;
+    left[i] = last;
+  }
+  let next = -1;
+  for (let i = n - 1; i >= 0; i--) {
+    if (isSource(i)) {
+      next = i;
+      continue;
+    }
+    const l = left[i];
+    const useLeft = l >= 0 && (next < 0 || i - l <= next - i);
+    if (useLeft) values[i] = values[l];
+    else if (next >= 0) values[i] = values[next];
+  }
+}
+
+/**
+ * One fixed-point update: ratio > 1 → model too fast → raise the drag.
+ * Grounded nodes update C, floating nodes update γ.
+ */
+function updateDrag(
+  fields: DragFields,
+  u_surf: Float64Array,
+  u_obs: Float64Array,
+  is_floating: Uint8Array,
+): DragFields {
+  const nx = u_obs.length;
+  const C = new Float64Array(fields.C_basal);
+  const gamma = new Float64Array(fields.lateral_drag);
+  for (let i = 0; i < nx; i++) {
+    if (!is_floating[i] && u_obs[i] < 1) {
+      C[i] = C_BASAL_MAX; // near-zero observed velocity → frozen bed
+      continue;
+    }
+    if (u_obs[i] < 1) continue;
+    const factor = Math.pow(Math.max(u_surf[i], 1.0) / u_obs[i], INVERSION_ALPHA);
+    if (is_floating[i]) {
+      gamma[i] = clamp(gamma[i] * factor, LATERAL_DRAG_MIN, LATERAL_DRAG_MAX);
+    } else {
+      C[i] = clamp(C[i] * factor, C_BASAL_MIN, C_BASAL_MAX);
+    }
+  }
+  return { C_basal: C, lateral_drag: gamma };
+}
+
+/**
+ * Smooth both fields. Each is first extended into the region where it is
+ * inactive (C under floating ice, γ under grounded ice) so smoothing near
+ * the grounding line does not mix in meaningless values — and so ice that
+ * later re-grounds keeps friction, or newly floating ice keeps buttressing.
+ */
+function regularize(fields: DragFields, u_obs: Float64Array, is_floating: Uint8Array): DragFields {
+  const grounded = (i: number) => !is_floating[i];
+  const floating = (i: number) => is_floating[i] === 1;
+  fillNearest(fields.C_basal, grounded);
+  fillNearest(fields.lateral_drag, floating);
+
+  const C = gaussianSmooth(fields.C_basal);
+  const gamma = gaussianSmooth(fields.lateral_drag);
+  for (let i = 0; i < C.length; i++) {
+    // Frozen-bed nodes keep their hard assignment through smoothing.
+    C[i] = grounded(i) && u_obs[i] < 1 ? C_BASAL_MAX : clamp(C[i], C_BASAL_MIN, C_BASAL_MAX);
+    gamma[i] = clamp(gamma[i], LATERAL_DRAG_MIN, LATERAL_DRAG_MAX);
+  }
+  // Ice divide: copy from first interior grounded node
+  if (grounded(0) && C.length > 1) C[0] = C[1];
+  fillNearest(C, grounded);
+  fillNearest(gamma, floating);
+  return { C_basal: C, lateral_drag: gamma };
+}
+
+/**
+ * Invert basal friction C(x) and lateral drag γ(x) from observed surface speed.
  *
- * @param state    Current model state (will be temporarily mutated then restored)
+ * @param state    Current model state. C_basal / lateral_drag are restored
+ *                 afterwards; state.u is left at the last forward solution
+ *                 (a better initial guess than the analytic one).
  * @param u_obs    Observed surface speed at each grid node (m/yr)
  * @param T_atm_base  Base atmospheric temperature for viscosity calculation
- * @returns        Inverted C(x) array of length nx
+ */
+export function invertDragFields(
+  state: ModelState,
+  u_obs: Float64Array,
+  T_atm_base: number,
+): DragFields {
+  const { nx, nz } = state.grid;
+  const { is_floating } = state;
+
+  let fields: DragFields = {
+    C_basal: new Float64Array(nx).fill(C_SLIDING),
+    lateral_drag: new Float64Array(nx).fill(LATERAL_DRAG_DEFAULT),
+  };
+  for (let i = 0; i < nx; i++) {
+    if (!is_floating[i] && u_obs[i] < 1) fields.C_basal[i] = C_BASAL_MAX;
+  }
+
+  const original = { C_basal: state.C_basal, lateral_drag: state.lateral_drag };
+
+  for (let iter = 0; iter < INVERSION_MAX_ITER; iter++) {
+    state.C_basal = fields.C_basal;
+    state.lateral_drag = fields.lateral_drag;
+
+    // Solve forward problem, warm-starting from the previous iterate
+    state.u = solveBP(state, T_atm_base);
+    const u_surf = surfaceVelocity(state.u, nx, nz);
+
+    const groundedMisfit = normalisedRMS(u_surf, u_obs, (i) => !is_floating[i]);
+    const floatingMisfit = normalisedRMS(u_surf, u_obs, (i) => is_floating[i] === 1);
+    if (groundedMisfit < INVERSION_TOL && floatingMisfit < INVERSION_TOL) {
+      break;
+    }
+
+    fields = regularize(updateDrag(fields, u_surf, u_obs, is_floating), u_obs, is_floating);
+  }
+
+  state.C_basal = original.C_basal;
+  state.lateral_drag = original.lateral_drag;
+  return fields;
+}
+
+/**
+ * Invert basal friction coefficient C(x) from observed surface velocity.
+ * Convenience wrapper around invertDragFields for callers that only need C.
  */
 export function invertBasalFriction(
   state: ModelState,
   u_obs: Float64Array,
   T_atm_base: number,
 ): Float64Array {
-  const { nx, nz } = state.grid;
-
-  // Initialise C(x) with the global constant
-  let C: Float64Array = new Float64Array(nx);
-  for (let i = 0; i < nx; i++) {
-    if (state.is_floating[i]) {
-      C[i] = 0;
-    } else if (u_obs[i] < 1) {
-      // Near-zero observed velocity → frozen bed
-      C[i] = C_BASAL_MAX;
-    } else {
-      C[i] = C_SLIDING;
-    }
-  }
-
-  // Save original C_basal so we can restore after inversion
-  const originalCBasal = state.C_basal;
-
-  for (let iter = 0; iter < INVERSION_MAX_ITER; iter++) {
-    // Inject current C(x) into state for the BP solver
-    state.C_basal = C;
-
-    // Solve forward problem
-    const u2d = solveBP(state, T_atm_base);
-    const u_surf = surfaceVelocity(u2d, nx, nz);
-
-    // Check convergence
-    const misfit = normalisedRMS(u_surf, u_obs, state.is_floating);
-    if (misfit < INVERSION_TOL) {
-      break;
-    }
-
-    // Update C using fixed-point rule
-    const C_new = new Float64Array(nx);
-    for (let i = 0; i < nx; i++) {
-      if (state.is_floating[i]) {
-        C_new[i] = 0;
-        continue;
-      }
-
-      if (u_obs[i] < 1) {
-        C_new[i] = C_BASAL_MAX;
-        continue;
-      }
-
-      const u_m = Math.max(u_surf[i], 1.0); // Prevent division by zero
-      const ratio = u_obs[i] / u_m;
-      // ratio > 1 → model too slow → decrease C (less friction)
-      // ratio < 1 → model too fast → increase C (more friction)
-      C_new[i] = C[i] * Math.pow(ratio, INVERSION_ALPHA);
-
-      // Clamp to physical bounds
-      C_new[i] = Math.max(C_BASAL_MIN, Math.min(C_BASAL_MAX, C_new[i]));
-    }
-
-    // Gaussian smoothing
-    C = gaussianSmooth(C_new);
-
-    // Re-clamp after smoothing and enforce floating = 0
-    for (let i = 0; i < nx; i++) {
-      if (state.is_floating[i]) {
-        C[i] = 0;
-      } else {
-        C[i] = Math.max(C_BASAL_MIN, Math.min(C_BASAL_MAX, C[i]));
-      }
-    }
-
-    // Ice divide: copy from first interior grounded node
-    if (!state.is_floating[0] && nx > 1) {
-      C[0] = C[1];
-    }
-  }
-
-  // Restore original state (inversion is a pre-processing step)
-  state.C_basal = originalCBasal;
-
-  return C;
+  return invertDragFields(state, u_obs, T_atm_base).C_basal;
 }

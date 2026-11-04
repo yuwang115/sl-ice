@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { BASE } from '../../base';
 import type { ComponentType } from 'react';
 import { useGameStore } from '../../store/game-store';
 import { useUIStore } from '../../store/ui-store';
@@ -61,7 +62,7 @@ export default function ModeSelector() {
 
   useEffect(() => {
     let isMounted = true;
-    fetch('/data/flowline-catalog.json')
+    fetch(`${BASE}/data/flowline-catalog.json`)
       .then((response) => response.json())
       .then((catalog: unknown) => {
         if (!isMounted || !Array.isArray(catalog)) return;
@@ -145,7 +146,7 @@ export default function ModeSelector() {
       {/* Logo + subtitle */}
       <div className="text-center mb-14 animate-in">
         <img
-          src={theme === 'dark' ? '/SL-ICE logo dark.png' : '/SL-ICE logo light.png'}
+          src={theme === 'dark' ? `${BASE}/SL-ICE logo dark.png` : `${BASE}/SL-ICE logo light.png`}
           alt="SL-ICE"
           className="max-w-xs md:max-w-sm h-auto mx-auto mb-4 animate-breathe"
           draggable={false}
@@ -155,8 +156,8 @@ export default function ModeSelector() {
           style={{ color: 'var(--text-muted)' }}
         >
           {isZh
-            ? '\u57fa\u4e8e Blatter-Pattyn \u9ad8\u9636\u5e94\u529b\u6a21\u578b\u7684\u5b9e\u65f6\u51b0\u76d6\u7269\u7406\u6a21\u62df\u5668\u3002\u8c03\u8282\u6c14\u5019\u53c2\u6570\uff0c\u4eb2\u624b\u4f53\u9a8c\u51b0\u76d6\u7684\u751f\u957f\u3001\u9000\u7f29\u548c\u4e0d\u53ef\u9006\u5d29\u587e\u3002'
-            : 'A real-time ice sheet physics simulator based on the Blatter-Pattyn higher-order stress model.'}
+            ? '\u6cbf\u771f\u5b9e\u5357\u6781\u51b0\u6d41\u7ebf\u5207\u4e00\u7247\u51b0\u76d6 \u2014 \u8c03\u8282\u964d\u96ea\u3001\u6d77\u6c34\u6e29\u5ea6\uff0c\u5b9e\u65f6\u89c2\u5bdf\u51b0\u5ddd\u7684\u751f\u957f\u3001\u9000\u7f29\u548c\u5d29\u587e\u3002'
+            : 'Take a 2D slice through the real Antarctic ice sheet — adjust snowfall, warm the ocean, and watch the glacier grow, retreat, or collapse in real time.'}
         </p>
       </div>
 

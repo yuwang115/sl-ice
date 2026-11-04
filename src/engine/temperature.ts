@@ -11,7 +11,7 @@
  */
 
 import {
-  GLEN_N, KAPPA_ICE_YR, PRESSURE_MELTING,
+  GLEN_N, KAPPA_ICE_YR, PRESSURE_MELTING, H_MIN,
   Q_COLD, Q_WARM, A0_COLD, A0_WARM, R_GAS, SEC_PER_YEAR,
   STRAIN_RATE_MIN, LAPSE_RATE, T_ATM_BASE, POLAR_AMPLIFICATION,
 } from './constants';
@@ -180,14 +180,17 @@ export function computeViscosityField(
       // Flow rate factor
       const A = flowRateFactor(T);
 
-      // Strain rates
+      // Strain rates — one-sided next to ice-free cells, whose u = 0 is a
+      // placeholder rather than a velocity the ice is coupled to.
+      const iceLeft = i > 0 && H[i - 1] >= H_MIN;
+      const iceRight = i < nx - 1 && H[i + 1] >= H_MIN;
       let dudx = 0;
-      if (i > 0 && i < nx - 1) {
+      if (iceLeft && iceRight) {
         dudx = (u[(i + 1) * nz + j] - u[(i - 1) * nz + j]) / (2 * dx);
-      } else if (i === 0) {
-        dudx = (u[1 * nz + j] - u[0 * nz + j]) / dx;
-      } else {
-        dudx = (u[(nx - 1) * nz + j] - u[(nx - 2) * nz + j]) / dx;
+      } else if (iceRight) {
+        dudx = (u[(i + 1) * nz + j] - u[i * nz + j]) / dx;
+      } else if (iceLeft) {
+        dudx = (u[i * nz + j] - u[(i - 1) * nz + j]) / dx;
       }
 
       let dudsigma = 0;

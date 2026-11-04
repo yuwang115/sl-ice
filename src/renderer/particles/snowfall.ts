@@ -3,33 +3,32 @@
  */
 
 import { toCanvasX, toCanvasY, type DrawContext } from '../draw-bedrock';
+import { createSpawnBudget, frameSteps, REFERENCE_FRAME_S } from '../frame-timing';
 
 interface Snowflake {
   x: number;  // domain x (m)
   z: number;  // domain z (m)
-  vz: number; // fall speed (m/step)
+  vz: number; // fall speed (m per 60 Hz frame)
   size: number;
   opacity: number;
 }
 
 const MAX_SNOWFLAKES = 200;
 let snowflakes: Snowflake[] = [];
+const spawnBudget = createSpawnBudget();
 
-/**
- * Update and draw snowfall particles.
- */
-export function drawSnowfall(
-  dc: DrawContext,
+function spawnSnowflakes(
   smb: Float64Array,
-  s: Float64Array,
   xPositions: Float64Array,
+  xMax: number,
+  zMax: number,
   precipScale: number,
+  steps: number,
 ): void {
-  const { ctx, xMax, zMax } = dc;
-
-  // Spawn new snowflakes based on precipitation rate
-  const spawnRate = Math.min(10, Math.max(1, precipScale * 5));
-  for (let n = 0; n < spawnRate && snowflakes.length < MAX_SNOWFLAKES; n++) {
+  // The former loop ran ceil(rate) spawn attempts per frame.
+  const attemptsPerFrame = Math.ceil(Math.min(10, Math.max(1, precipScale * 5)));
+  const due = spawnBudget.take(attemptsPerFrame, steps);
+  for (let n = 0; n < due && snowflakes.length < MAX_SNOWFLAKES; n++) {
     const idx = Math.floor(Math.random() * xPositions.length);
     if (smb[idx] > 0) {
       snowflakes.push({
@@ -41,13 +40,32 @@ export function drawSnowfall(
       });
     }
   }
+  if (snowflakes.length >= MAX_SNOWFLAKES) spawnBudget.clear();
+}
+
+/**
+ * Update and draw snowfall particles. `dt` is the frame time in seconds.
+ */
+export function drawSnowfall(
+  dc: DrawContext,
+  smb: Float64Array,
+  s: Float64Array,
+  xPositions: Float64Array,
+  precipScale: number,
+  dt: number = REFERENCE_FRAME_S,
+): void {
+  const { ctx, xMax, zMax } = dc;
+  const steps = frameSteps(dt);
+
+  // Spawn new snowflakes based on precipitation rate
+  spawnSnowflakes(smb, xPositions, xMax, zMax, precipScale, steps);
 
   // Update and draw
   const alive: Snowflake[] = [];
 
   for (const flake of snowflakes) {
-    flake.z += flake.vz;
-    flake.x += (Math.random() - 0.5) * 20; // Gentle horizontal drift
+    flake.z += flake.vz * steps;
+    flake.x += (Math.random() - 0.5) * 20 * steps; // Gentle horizontal drift
 
     // Find surface at this x
     let surfaceZ = 0;
@@ -79,4 +97,5 @@ export function drawSnowfall(
 
 export function resetSnowfall(): void {
   snowflakes = [];
+  spawnBudget.clear();
 }

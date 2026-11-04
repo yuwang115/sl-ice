@@ -3,6 +3,7 @@
  */
 
 import { toCanvasX, toCanvasY, type DrawContext } from '../draw-bedrock';
+import { frameSteps, REFERENCE_FRAME_S } from '../frame-timing';
 
 interface WaterParticle {
   x: number;
@@ -13,8 +14,11 @@ interface WaterParticle {
 }
 
 const MAX_PARTICLES = 150;
+/** Per-60 Hz-frame motion factor the velocities were tuned with. */
+const MOTION_DT = 0.016;
 let particles: WaterParticle[] = [];
 
+/** `dt` is the frame time in seconds; motion, ageing and spawning scale with it. */
 export function drawWaterFlow(
   dc: DrawContext,
   W: Float64Array,
@@ -22,12 +26,14 @@ export function drawWaterFlow(
   H: Float64Array,
   xPositions: Float64Array,
   is_floating: Uint8Array,
+  dt: number = REFERENCE_FRAME_S,
 ): void {
   const { ctx, xMax } = dc;
+  const steps = frameSteps(dt);
 
-  // Spawn particles where water pressure is high
+  // Spawn particles where water pressure is high (per-frame chance scaled by frame length)
   for (let idx = 1; idx < W.length - 1 && particles.length < MAX_PARTICLES; idx++) {
-    if (W[idx] > 0.1 && !is_floating[idx] && H[idx] > 50 && Math.random() < W[idx] * 0.3) {
+    if (W[idx] > 0.1 && !is_floating[idx] && H[idx] > 50 && Math.random() < W[idx] * 0.3 * steps) {
       particles.push({
         x: xPositions[idx],
         z: b[idx] + 5, // Just above bedrock
@@ -41,8 +47,8 @@ export function drawWaterFlow(
   const alive: WaterParticle[] = [];
 
   for (const p of particles) {
-    p.x += p.vx * 0.016; // ~60fps
-    p.life++;
+    p.x += p.vx * MOTION_DT * steps;
+    p.life += steps;
 
     if (p.life > p.maxLife || p.x > xMax) continue;
 

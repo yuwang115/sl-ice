@@ -4,10 +4,52 @@
  */
 
 import { toCanvasX, toCanvasY, type DrawContext } from './draw-bedrock';
-import { drawTooltipPanel, clearPreparedCache } from './canvas-text';
+import { drawTooltipPanel, clearPreparedCache, measureTooltipPanel } from './canvas-text';
 import type { PhysicsStatePayload } from '../engine/types';
 
 type Language = 'en' | 'zh';
+
+// ── Shelf helpers ──
+
+/** Minimum thickness (m) for a node seaward of the grounding line to count as shelf. */
+const SHELF_MIN_THICKNESS = 10;
+
+/** First/last node index of the floating shelf, or null when there is none. */
+export function findShelfRange(
+  H: ArrayLike<number>,
+  xPositions: ArrayLike<number>,
+  glPositionM: number,
+): { start: number; end: number } | null {
+  let start = -1;
+  let end = -1;
+  for (let i = 0; i < xPositions.length; i++) {
+    if (xPositions[i] > glPositionM && H[i] > SHELF_MIN_THICKNESS) {
+      if (start < 0) start = i;
+      end = i;
+    }
+  }
+  return start < 0 ? null : { start, end };
+}
+
+/**
+ * Mean thickness (m) of the floating nodes, using the real node positions
+ * (the former estimate assumed ~1 km spacing and returned 0 m on 2 km grids).
+ */
+export function computeShelfMeanThickness(
+  H: ArrayLike<number>,
+  xPositions: ArrayLike<number>,
+  glPositionM: number,
+): number {
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < xPositions.length; i++) {
+    if (xPositions[i] > glPositionM && H[i] > SHELF_MIN_THICKNESS) {
+      sum += H[i];
+      count++;
+    }
+  }
+  return count > 0 ? sum / count : 0;
+}
 
 // ── Tooltip definitions ──
 
@@ -18,7 +60,11 @@ interface TooltipDef {
   /** Return canvas-space anchor point, or null if not visible. */
   anchor: (dc: DrawContext, state: PhysicsStatePayload, xPositions: Float64Array) => { x: number; y: number } | null;
   /** Dynamic data rows populated from live state. */
-  dataRows?: (state: PhysicsStatePayload, lang: Language) => ReadonlyArray<{ label: string; value: string }>;
+  dataRows?: (
+    state: PhysicsStatePayload,
+    lang: Language,
+    xPositions: Float64Array,
+  ) => ReadonlyArray<{ label: string; value: string }>;
   /** Hit radius in canvas pixels. */
   hitRadius: number;
 }
@@ -66,37 +112,17 @@ const tooltipDefs: readonly TooltipDef[] = [
     },
     anchor: (dc, state, xPositions) => {
       if (!state.shelf_exists) return null;
-      const glPosM = state.gl_position * 1000;
-      // Find midpoint of floating section
-      let shelfStart = -1;
-      let shelfEnd = -1;
-      for (let i = 0; i < xPositions.length; i++) {
-        if (xPositions[i] > glPosM && state.H[i] > 10) {
-          if (shelfStart < 0) shelfStart = i;
-          shelfEnd = i;
-        }
-      }
-      if (shelfStart < 0) return null;
-      const midIdx = Math.floor((shelfStart + shelfEnd) / 2);
+      // Midpoint of the floating section
+      const shelf = findShelfRange(state.H, xPositions, state.gl_position * 1000);
+      if (!shelf) return null;
+      const midIdx = Math.floor((shelf.start + shelf.end) / 2);
       return {
         x: toCanvasX(xPositions[midIdx], dc),
         y: toCanvasY(state.s[midIdx], dc) - 10,
       };
     },
-    dataRows: (state, lang) => {
-      // Estimate shelf thickness at midpoint
-      const glPosM = state.gl_position * 1000;
-      const nx = state.H.length;
-      let shelfThickness = 0;
-      let count = 0;
-      for (let i = 0; i < nx; i++) {
-        const xPos = i * (glPosM > 0 ? (glPosM * nx / (state.gl_position * (nx - 1))) : 1000);
-        if (xPos > glPosM && state.H[i] > 10) {
-          shelfThickness += state.H[i];
-          count++;
-        }
-      }
-      if (count > 0) shelfThickness /= count;
+    dataRows: (state, lang, xPositions) => {
+      const shelfThickness = computeShelfMeanThickness(state.H, xPositions, state.gl_position * 1000);
       return [
         { label: lang === 'zh' ? '平均厚度' : 'Avg. Thickness', value: `${shelfThickness.toFixed(0)} m` },
       ];
@@ -279,26 +305,33 @@ export function drawCanvasTooltips(
   if (!anchor) return;
 
   const content = language === 'zh' ? active.zh : active.en;
-  const dataRows = active.dataRows?.(state, language);
+  const dataRows = active.dataRows?.(state, language, xPositions);
   const borderColor = active.id === 'sea-level'
     ? 'rgba(100, 180, 255, 0.5)'
     : 'rgba(125, 211, 252, 0.35)';
 
-  // Estimate panel height for clamping (rough: title + body + data)
-  const estimatedLines = Math.ceil(content.body.length / 28) + 1;
-  const estimatedH = PANEL_STYLE.padding * 2 + estimatedLines * PANEL_STYLE.lineHeight + 20
-    + (dataRows ? dataRows.length * 16 + 6 : 0);
+  // Measure the panel exactly as it will be drawn, for clamping and the leader line
+  const { height: panelH } = measureTooltipPanel({
+    maxWidth: TOOLTIP_WIDTH,
+    padding: PANEL_STYLE.padding,
+    lineHeight: PANEL_STYLE.lineHeight,
+    title: content.title,
+    titleFont: PANEL_STYLE.titleFont,
+    body: content.body,
+    bodyFont: PANEL_STYLE.bodyFont,
+    dataRows,
+  });
 
   const { px, py } = clampPanel(
     anchor.x, anchor.y,
-    TOOLTIP_WIDTH, estimatedH,
+    TOOLTIP_WIDTH, panelH,
     dc.width, dc.height,
   );
 
   // Draw connecting line from anchor to panel
   dc.ctx.beginPath();
   dc.ctx.moveTo(anchor.x, anchor.y);
-  dc.ctx.lineTo(px + TOOLTIP_WIDTH / 2, py + estimatedH);
+  dc.ctx.lineTo(px + TOOLTIP_WIDTH / 2, py + panelH);
   dc.ctx.strokeStyle = 'rgba(125, 211, 252, 0.2)';
   dc.ctx.lineWidth = 1;
   dc.ctx.setLineDash([3, 3]);

@@ -1,4 +1,3 @@
-import React from 'react';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Dashboard from '../../src/components/layout/Dashboard';
@@ -30,13 +29,16 @@ function createPhysicsState(): PhysicsStatePayload {
     events: [],
     smb: new Float64Array([0.1, 0.08]),
     u_depth_avg: new Float64Array([60, 90]),
+    nx: 2,
+    nz: 2,
+    dsigma: 1,
   };
 }
 
 function createHistory(): PhysicsHistoryPoint[] {
   return [
-    { year: 0, glFluxKm3Yr: 0.012, massChangeGt: -2.864 },
-    { year: 112, glFluxKm3Yr: 0.021, massChangeGt: 35.3 },
+    { year: 0, glFluxKm3Yr: 0.012, massChangeGt: -2.864, glPosition: 830 },
+    { year: 112, glFluxKm3Yr: 0.021, massChangeGt: 35.3, glPosition: 821 },
   ];
 }
 

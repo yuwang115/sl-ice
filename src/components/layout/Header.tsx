@@ -2,6 +2,8 @@
  * Header bar with logo, mode selector, and controls.
  */
 
+import { useShallow } from 'zustand/react/shallow';
+import { BASE } from '../../base';
 import { useGameStore } from '../../store/game-store';
 import { useUIStore } from '../../store/ui-store';
 import PlaybackControls from '../controls/PlaybackControls';
@@ -26,8 +28,23 @@ const ArrowLeftIcon = () => (
 );
 
 export default function Header() {
-  const { mode, setMode, selectFlowline, selectedFlowline, selectRegion } = useGameStore();
-  const { language, toggleLanguage, toggleSidebar, theme } = useUIStore();
+  const { mode, setMode, selectFlowline, selectedFlowline, selectRegion } = useGameStore(
+    useShallow((s) => ({
+      mode: s.mode,
+      setMode: s.setMode,
+      selectFlowline: s.selectFlowline,
+      selectedFlowline: s.selectedFlowline,
+      selectRegion: s.selectRegion,
+    })),
+  );
+  const { language, toggleLanguage, toggleSidebar, theme } = useUIStore(
+    useShallow((s) => ({
+      language: s.language,
+      toggleLanguage: s.toggleLanguage,
+      toggleSidebar: s.toggleSidebar,
+      theme: s.theme,
+    })),
+  );
   const isZh = language === 'zh';
 
   const modes: { key: GameMode; label: string; labelZh: string }[] = [
@@ -60,7 +77,7 @@ export default function Header() {
         </button>
         <button onClick={() => handleModeSwitch('explorer')} className="flex items-center">
           <img
-            src={theme === 'dark' ? '/SL-ICE logo dark.png' : '/SL-ICE logo light.png'}
+            src={theme === 'dark' ? `${BASE}/SL-ICE logo dark.png` : `${BASE}/SL-ICE logo light.png`}
             alt="SL-ICE"
             className="h-7 w-auto"
             draggable={false}

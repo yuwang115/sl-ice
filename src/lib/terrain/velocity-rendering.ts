@@ -5,6 +5,7 @@ import {
   VELOCITY_MAX,
   VELOCITY_SURFACE_OPACITY,
 } from './constants';
+import { VELOCITY_TEXEL_CHANNELS } from './velocity-field';
 
 function getVelocityTextureType(
   renderer: THREE.WebGLRenderer,
@@ -29,6 +30,23 @@ function getVelocityTextureType(
   return null;
 }
 
+/** Convert the worker's RGBA32F texels to half floats (WebGL1 fallback path). */
+function toHalfFloatTexels(data: Float32Array): Uint16Array | null {
+  const toHalfFloat = THREE.DataUtils?.toHalfFloat;
+  if (typeof toHalfFloat !== 'function') return null;
+
+  const half = new Uint16Array(data.length);
+  for (let i = 0; i < data.length; i += 1) {
+    half[i] = toHalfFloat(data[i]);
+  }
+  return half;
+}
+
+/**
+ * Wrap the worker-built velocity texels (vx, vy, valid, 0) in a DataTexture.
+ * Returns null when the renderer cannot sample float textures of this size,
+ * in which case the caller falls back to vertex colours.
+ */
 export function createVelocityDataTexture(
   velocityArrays: VelocityMeshArrays,
   nx: number,
@@ -38,41 +56,11 @@ export function createVelocityDataTexture(
   const textureType = getVelocityTextureType(renderer, nx, ny);
   if (!textureType) return null;
 
-  const cellCount = nx * ny;
-  if (
-    velocityArrays.velocityX.length !== cellCount ||
-    velocityArrays.velocityY.length !== cellCount ||
-    velocityArrays.velocityValid.length !== cellCount
-  ) {
-    return null;
-  }
+  const texels = velocityArrays.textureData;
+  if (texels.length !== nx * ny * VELOCITY_TEXEL_CHANNELS) return null;
 
-  let textureData: Float32Array | Uint16Array;
-
-  if (textureType === THREE.FloatType) {
-    textureData = new Float32Array(cellCount * 4);
-    for (let i = 0; i < cellCount; i += 1) {
-      const base = i * 4;
-      const isValid = velocityArrays.velocityValid[i] > 0;
-      textureData[base] = isValid ? velocityArrays.velocityX[i] : 0;
-      textureData[base + 1] = isValid ? velocityArrays.velocityY[i] : 0;
-      textureData[base + 2] = isValid ? 1 : 0;
-      textureData[base + 3] = 0;
-    }
-  } else {
-    const toHalfFloat = THREE.DataUtils?.toHalfFloat;
-    if (typeof toHalfFloat !== 'function') return null;
-
-    textureData = new Uint16Array(cellCount * 4);
-    for (let i = 0; i < cellCount; i += 1) {
-      const base = i * 4;
-      const isValid = velocityArrays.velocityValid[i] > 0;
-      textureData[base] = toHalfFloat(isValid ? velocityArrays.velocityX[i] : 0);
-      textureData[base + 1] = toHalfFloat(isValid ? velocityArrays.velocityY[i] : 0);
-      textureData[base + 2] = toHalfFloat(isValid ? 1 : 0);
-      textureData[base + 3] = toHalfFloat(0);
-    }
-  }
+  const textureData = textureType === THREE.FloatType ? texels : toHalfFloatTexels(texels);
+  if (!textureData) return null;
 
   const texture = new THREE.DataTexture(textureData, nx, ny, THREE.RGBAFormat, textureType);
   texture.minFilter = THREE.NearestFilter;

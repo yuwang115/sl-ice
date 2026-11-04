@@ -1,6 +1,6 @@
 /**
  * Coordinate projection utilities for Antarctic Polar Stereographic (EPSG:3031).
- * Converts lon/lat → polar stereographic meters → scene coordinates.
+ * Converts catalog lon/lat → polar stereographic meters → scene coordinates.
  */
 
 import {
@@ -10,11 +10,25 @@ import {
   FLOWLINE_SURFACE_OFFSET_M,
 } from './constants';
 
-// ── EPSG:3031 Projection ─────────────────────────────────────────────
+// ── EPSG:3031 Projection — longitude convention (read before changing) ──
 //
-// Matches the inverse formula used in scripts/extract-flowlines.mjs:
-//   lambda = atan2(x, -y)   →  x = rho·sin(λ),  y = −rho·cos(λ)
-//   t = rho·TC / (A·MC)
+// True EPSG:3031 (south polar stereographic, λ0 = 0°, φts = −71°) is
+//     x = ρ·sin λ,   y = +ρ·cos λ.
+// lonLatToPS() returns y = −ρ·cos λ instead (the north-polar sign), i.e. it
+// mirrors points across the x axis. The flowline catalog and scenario files
+// were generated with the matching mirrored inverse, λ' = atan2(x, −y)
+// (scripts/generate-antarctica-flowlines.py, scripts/extract-flowlines.mjs),
+// so every stored longitude is λ' = 180° − λ_true (wrapped); latitudes are
+// unaffected. Because sin(180° − λ) = sin λ and −cos(180° − λ) = cos λ,
+// lonLatToPS(λ', φ) still lands on the true EPSG:3031 grid position, so 3D
+// placement and profile sampling are correct — but the stored longitudes are
+// not geographic longitudes (Thwaites is stored as ≈ −77.6°, true ≈ −102.4°).
+//
+// Fixing the sign here requires transforming every stored longitude in the
+// same change (λ_true = 180° − λ', wrapped to (−180°, 180°]) and fixing both
+// generator scripts; changing only one side misplaces every flowline.
+//
+//   t = ρ·TC / (A·MC)   (conformal latitude parameter, as in the scripts)
 
 const DEG = Math.PI / 180;
 const E = WGS84_E;
@@ -30,8 +44,12 @@ const TC =
   Math.pow((1 - E * sinPhiTS) / (1 + E * sinPhiTS), E / 2);
 
 /**
- * Convert WGS-84 longitude/latitude to Antarctic Polar Stereographic (EPSG:3031).
- * Verified against known BedMachine coordinates to sub-meter accuracy.
+ * Convert a catalog longitude/latitude pair to EPSG:3031 meters.
+ *
+ * `lon` must use the catalog's mirrored convention (λ' = 180° − λ_true, see
+ * the note above); for such input the result is the true EPSG:3031 (x, y)
+ * that indexes the BedMachine grid. Feeding a geographic longitude instead
+ * returns the point mirrored across the x axis.
  */
 export function lonLatToPS(lon: number, lat: number): { x: number; y: number } {
   const phi = Math.abs(lat) * DEG;       // absolute latitude in radians
@@ -98,7 +116,9 @@ export function gridToScene(
 
 /**
  * Bilinear interpolation of a grid value at fractional (col, row).
- * Returns NaN if any surrounding cell is invalid.
+ * Returns NaN outside the grid (col ∉ [0, nx−1] or row ∉ [0, ny−1]). When a
+ * surrounding node is invalid it falls back to the nearest node (NaN if that
+ * is invalid too).
  */
 export function interpolateGrid(
   col: number,
@@ -107,12 +127,13 @@ export function interpolateGrid(
   nx: number,
   ny: number,
 ): number {
+  // Written as negated "inside" tests so NaN coordinates are rejected too.
+  if (!(col >= 0 && col <= nx - 1 && row >= 0 && row <= ny - 1)) return NaN;
+
   const c0 = Math.floor(col);
   const r0 = Math.floor(row);
   const c1 = Math.min(nx - 1, c0 + 1);
   const r1 = Math.min(ny - 1, r0 + 1);
-
-  if (c0 < 0 || r0 < 0 || c1 >= nx || r1 >= ny) return NaN;
 
   const fc = col - c0;
   const fr = row - r0;

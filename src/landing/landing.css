@@ -119,3 +119,115 @@ html, body, #root {
   color: var(--text-muted);
   opacity: 0.3;
 }
+
+/* ─── Promo Card ──────────────────────────────────────────── */
+.promo-card {
+  display: grid;
+  grid-template-columns: 0.95fr 1.05fr;
+  gap: clamp(1.4rem, 2.6vw, 2rem);
+  padding: clamp(1.35rem, 3vw, 2.5rem);
+  border-radius: 30px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+}
+
+.promo-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(74, 144, 168, 0.18) 0%, transparent 50%),
+    radial-gradient(circle at 92% 86%, rgba(61, 139, 110, 0.14) 0%, transparent 50%),
+    linear-gradient(160deg, var(--bg-card) 0%, var(--bg-panel-solid) 100%);
+  pointer-events: none;
+}
+
+[data-theme="dark"] .promo-card::before {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(90, 172, 224, 0.16) 0%, transparent 50%),
+    radial-gradient(circle at 92% 86%, rgba(77, 191, 160, 0.12) 0%, transparent 50%),
+    linear-gradient(160deg, var(--bg-card) 0%, var(--bg-panel-solid) 100%);
+}
+
+.promo-card__content,
+.promo-card__showcase {
+  position: relative;
+  z-index: 1;
+}
+
+.promo-card__content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.promo-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 28px;
+  border-radius: var(--radius-pill);
+  font-family: 'Nunito', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-teal) 100%);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 12px 24px rgba(74, 144, 168, 0.22);
+  transition: all var(--transition);
+  text-decoration: none;
+}
+
+.promo-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(74, 144, 168, 0.3);
+}
+
+.promo-btn-primary:active {
+  transform: scale(0.97);
+  transition-duration: 100ms;
+}
+
+.promo-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 28px;
+  border-radius: var(--radius-pill);
+  font-family: 'Nunito', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all var(--transition);
+  text-decoration: none;
+}
+
+.promo-btn-ghost:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  background: var(--bg-card);
+  transform: translateY(-1px);
+}
+
+.promo-btn-ghost:active {
+  transform: scale(0.97);
+  transition-duration: 100ms;
+}
+
+@media (max-width: 900px) {
+  .promo-card {
+    grid-template-columns: 1fr;
+  }
+
+  .promo-card__showcase {
+    order: -1;
+    min-height: 280px;
+  }
+}

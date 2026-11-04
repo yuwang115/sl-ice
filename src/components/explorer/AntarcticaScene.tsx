@@ -1,9 +1,14 @@
 /**
  * AntarcticaScene — R3F Canvas containing bedrock, ice, velocity, and flowlines.
- * Manages data loading via a custom hook that orchestrates fetch → worker → store.
+ *
+ * Terrain comes from the explorer store (loaded by useTerrainLoader in the
+ * explorer). Once it is available the meshes mount hidden, every shader is
+ * pre-compiled (SceneWarmup), and only then is the scene revealed and the
+ * loading overlay removed — so neither the first frame nor a later layer
+ * toggle stalls on shader compilation.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -11,17 +16,23 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
 import { useExplorerStore } from '../../store/explorer-store';
 import { useUIStore } from '../../store/ui-store';
-import { loadGmtReliefColormap } from '../../lib/terrain/colormap-loader';
 import {
+  CAMERA_FAR,
+  CAMERA_FOV,
+  CAMERA_NEAR,
   DEFAULT_AUTO_ROTATE_SPEED,
   DEFAULT_CAMERA_POSITION,
   DEFAULT_CAMERA_TARGET,
   FOG_FAR,
   FOG_NEAR,
+  ORBIT_MAX_DISTANCE,
+  ORBIT_MIN_DISTANCE,
   SCENE_BACKGROUND,
 } from '../../lib/terrain/constants';
 import { getAutoRotateResumeDelay } from '../../lib/explorer-interactions';
 import { getWheelDollyScale, normalizeWheelDeltaY } from '../../lib/wheel-zoom';
+import { isWebGLAvailable } from '../../lib/webgl-support';
+import ErrorBoundary from '../layout/ErrorBoundary';
 
 import BedrockMesh from './BedrockMesh';
 import IceSurfaceMesh from './IceSurfaceMesh';
@@ -32,128 +43,20 @@ import CatalogFlowlines from './CatalogFlowlines';
 import CameraAnimator from './CameraAnimator';
 import LoadingOverlay from './LoadingOverlay';
 import SceneControls from './SceneControls';
+import SceneWarmup from './SceneWarmup';
+import WebGLUnavailable from './WebGLUnavailable';
 
 import type { FlowlineCatalogEntry } from '../game/FlowlineListPanel';
 
-// ── Terrain Loader Hook ──────────────────────────────────────────────
-
-function useTerrainLoader() {
-  const loadingStage = useExplorerStore((s) => s.loadingStage);
-  const setLoadingStage = useExplorerStore((s) => s.setLoadingStage);
-  const setError = useExplorerStore((s) => s.setError);
-  const setScaleFactors = useExplorerStore((s) => s.setScaleFactors);
-  const setSurfaceHeights = useExplorerStore((s) => s.setSurfaceHeights);
-  const setBedHeights = useExplorerStore((s) => s.setBedHeights);
-  const setThicknessData = useExplorerStore((s) => s.setThicknessData);
-  const setBedArrays = useExplorerStore((s) => s.setBedArrays);
-  const setIceArrays = useExplorerStore((s) => s.setIceArrays);
-  const setIceSideArrays = useExplorerStore((s) => s.setIceSideArrays);
-  const setIceBottomArrays = useExplorerStore((s) => s.setIceBottomArrays);
-  const setVelocityArrays = useExplorerStore((s) => s.setVelocityArrays);
-  const setBedColorTable = useExplorerStore((s) => s.setBedColorTable);
-
-  const loadedRef = useRef(false);
-
-  useEffect(() => {
-    if (loadingStage !== 'idle' || loadedRef.current) return;
-    loadedRef.current = true;
-
-    const run = async () => {
-      try {
-        setLoadingStage('fetching', 0.05, 'Fetching terrain data...');
-
-        // Parallel fetch: bin files + meta files + colormap
-        const [bedMetaRes, bedBinRes, velMetaRes, velBinRes, colorTable] = await Promise.all([
-          fetch('/3d-ice/data/bedmachine_antarctica_v4_480.meta.json'),
-          fetch('/3d-ice/data/bedmachine_antarctica_v4_480.bin'),
-          fetch('/3d-ice/data/antarctic_ice_velocity_phase_v01_480.meta.json'),
-          fetch('/3d-ice/data/antarctic_ice_velocity_phase_v01_480.bin'),
-          loadGmtReliefColormap(),
-        ]);
-
-        if (!bedMetaRes.ok || !bedBinRes.ok || !velMetaRes.ok || !velBinRes.ok) {
-          throw new Error('Failed to fetch terrain assets');
-        }
-
-        setBedColorTable(colorTable);
-
-        setLoadingStage('decoding', 0.2, 'Decoding binary data...');
-
-        const bedMeta = await bedMetaRes.json();
-        const bedBuffer = await bedBinRes.arrayBuffer();
-        const velocityMeta = await velMetaRes.json();
-        const velocityBuffer = await velBinRes.arrayBuffer();
-
-        setLoadingStage('building', 0.3, 'Building 3D geometry...');
-
-        // Send to worker
-        const worker = new Worker(
-          new URL('../../lib/terrain/geometry.worker.ts', import.meta.url),
-          { type: 'module' },
-        );
-
-        worker.onmessage = (e) => {
-          const data = e.data;
-
-          if (data.type === 'progress') {
-            setLoadingStage('building', data.progress, data.stage);
-            return;
-          }
-
-          if (data.type === 'error') {
-            setError(data.message);
-            worker.terminate();
-            return;
-          }
-
-          if (data.type === 'result') {
-            setScaleFactors(data.hScale, data.vScale);
-            setSurfaceHeights(data.surface, data.nx, data.ny);
-            setBedHeights(data.bedHeights);
-            setThicknessData(data.thicknessData);
-            setBedArrays(data.bed);
-            setIceArrays(data.ice);
-            setIceSideArrays(data.iceSide);
-            setIceBottomArrays(data.iceBottom);
-            setVelocityArrays(data.velocity);
-            setLoadingStage('ready', 1.0, 'Complete');
-            worker.terminate();
-          }
-        };
-
-        worker.onerror = (err) => {
-          setError(err.message || 'Worker error');
-          worker.terminate();
-        };
-
-        worker.postMessage(
-          {
-            type: 'buildAll',
-            bedMeta,
-            bedBuffer,
-            velocityMeta,
-            velocityBuffer,
-            oceanLut: colorTable.ocean,
-            landLut: colorTable.land,
-          },
-          [bedBuffer, velocityBuffer],
-        );
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    };
-
-    run();
-  }, [
-    loadingStage,
-    setLoadingStage, setError, setScaleFactors, setSurfaceHeights, setBedHeights, setThicknessData,
-    setBedArrays, setIceArrays, setIceSideArrays, setIceBottomArrays, setVelocityArrays, setBedColorTable,
-  ]);
-}
-
 // ── Scene Content (inside Canvas) ────────────────────────────────────
 
-function SceneContent() {
+interface SceneContentProps {
+  catalog: FlowlineCatalogEntry[];
+  /** False while the meshes are pre-compiling behind the loading overlay. */
+  revealed: boolean;
+}
+
+function SceneContent({ catalog, revealed }: SceneContentProps) {
   const exaggeration = useExplorerStore((s) => s.exaggeration);
 
   return (
@@ -165,12 +68,15 @@ function SceneContent() {
       <directionalLight color={0xffffff} intensity={0.9} position={[12, 18, 8]} />
       <directionalLight color={0x95c9e7} intensity={0.35} position={[-14, 6, -9]} />
 
-      <group scale={[1, exaggeration, 1]}>
-        <BedrockMesh />
-        <IceSurfaceMesh />
-        <IceSideMesh />
-        <IceBottomMesh />
-        <VelocityOverlay />
+      <group visible={revealed}>
+        <group scale={[1, exaggeration, 1]}>
+          <BedrockMesh />
+          <IceSurfaceMesh />
+          <IceSideMesh />
+          <IceBottomMesh />
+          <VelocityOverlay />
+        </group>
+        <CatalogFlowlines catalog={catalog} />
       </group>
 
       <CameraAnimator />
@@ -198,13 +104,14 @@ function ExplorerOrbitControls() {
     controls.update();
   }, [isTransitioning]);
 
+  // Aim at the default target once. Re-running this on every transition
+  // start would yank the view back before the fly-in begins.
   useEffect(() => {
     const controls = controlsRef.current;
     if (!controls) return;
     controls.target.set(...DEFAULT_CAMERA_TARGET);
-    controls.autoRotate = autoRotateEnabledRef.current && !isTransitioning;
     controls.update();
-  }, [isTransitioning]);
+  }, []);
 
   const clearResumeTimer = useCallback(() => {
     if (resumeTimerRef.current !== null) {
@@ -328,11 +235,12 @@ function ExplorerOrbitControls() {
   return (
     <OrbitControls
       ref={controlsRef}
+      makeDefault
       enabled={!isTransitioning}
       enableDamping
       dampingFactor={0.08}
-      minDistance={0.2}
-      maxDistance={360}
+      minDistance={ORBIT_MIN_DISTANCE}
+      maxDistance={ORBIT_MAX_DISTANCE}
       autoRotateSpeed={DEFAULT_AUTO_ROTATE_SPEED}
     />
   );
@@ -346,36 +254,47 @@ interface AntarcticaSceneProps {
 }
 
 export default function AntarcticaScene({ catalog, onSimulate }: AntarcticaSceneProps) {
-  const loadingStage = useExplorerStore((s) => s.loadingStage);
+  const hasTerrain = useExplorerStore((s) => s.terrain !== null);
   const selectedFlowlineId = useExplorerStore((s) => s.selectedFlowlineId);
+  const [webglAvailable] = useState(isWebGLAvailable);
+  // Per Canvas: a revisit with cached terrain still needs its shaders compiled.
+  const [shadersReady, setShadersReady] = useState(false);
+  const handleShadersReady = useCallback(() => setShadersReady(true), []);
 
-  // Start data loading
-  useTerrainLoader();
+  if (!webglAvailable) {
+    return (
+      <div className="relative w-full h-full">
+        <WebGLUnavailable reason="unsupported" />
+      </div>
+    );
+  }
+
+  const revealed = hasTerrain && shadersReady;
 
   return (
     <div className="relative w-full h-full">
-      <Canvas
-        camera={{ fov: 45, near: 0.1, far: 200, position: [...DEFAULT_CAMERA_POSITION] }}
-        dpr={[1, 2]}
-        gl={{
-          antialias: true,
-          alpha: false,
-          powerPreference: 'high-performance',
-          outputColorSpace: THREE.SRGBColorSpace,
-        }}
-      >
-        <SceneContent />
-        {loadingStage === 'ready' && (
-          <CatalogFlowlines catalog={catalog} />
-        )}
-      </Canvas>
+      <ErrorBoundary fallback={<WebGLUnavailable reason="crashed" />}>
+        <Canvas
+          camera={{ fov: CAMERA_FOV, near: CAMERA_NEAR, far: CAMERA_FAR, position: [...DEFAULT_CAMERA_POSITION] }}
+          dpr={[1, 2]}
+          gl={{
+            antialias: true,
+            alpha: false,
+            powerPreference: 'high-performance',
+            outputColorSpace: THREE.SRGBColorSpace,
+          }}
+        >
+          <SceneContent catalog={catalog} revealed={revealed} />
+          {hasTerrain && !shadersReady && <SceneWarmup onReady={handleShadersReady} />}
+        </Canvas>
+      </ErrorBoundary>
 
       {/* Overlay UI */}
-      {loadingStage !== 'ready' && <LoadingOverlay />}
-      {loadingStage === 'ready' && <SceneControls />}
+      {!revealed && <LoadingOverlay warming={hasTerrain} />}
+      {revealed && <SceneControls />}
 
       {/* Selected flowline action button */}
-      {selectedFlowlineId && loadingStage === 'ready' && (
+      {selectedFlowlineId && revealed && (
         <SelectedFlowlineAction
           flowlineId={selectedFlowlineId}
           catalog={catalog}
@@ -397,10 +316,10 @@ function SelectedFlowlineAction({
   catalog: FlowlineCatalogEntry[];
   onSimulate: (entry: FlowlineCatalogEntry) => void;
 }) {
+  const zh = useUIStore((s) => s.language) === 'zh';
   const entry = catalog.find((c) => c.id === flowlineId);
   if (!entry) return null;
 
-  const zh = useUIStore.getState().language === 'zh';
   const name = zh ? entry.name_zh : entry.name_en;
 
   return (

@@ -89,6 +89,8 @@ export default function ParameterSlider({
           max={max}
           step={step}
           value={value}
+          aria-label={label}
+          aria-valuetext={`${displayValue}${unit}`}
           onChange={(e) => onChange(parseFloat(e.target.value))}
           onPointerDown={() => setIsDragging(true)}
           onPointerUp={() => setIsDragging(false)}

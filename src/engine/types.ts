@@ -4,6 +4,10 @@
 
 // ─── Communication Protocol (Main Thread ↔ Worker) ─────────────
 
+/**
+ * init, reset and step each get exactly one reply: a `state_update`, or an
+ * `error` when the command cannot complete. update_params gets none.
+ */
 export interface PhysicsCommand {
   type: 'init' | 'step' | 'update_params' | 'reset';
   payload: {
@@ -12,6 +16,12 @@ export interface PhysicsCommand {
     dt?: number;
     nSteps?: number;
     overlayFlags?: { send2DField: boolean };
+    /**
+     * init/reset only: scenario generation chosen by the main thread. The
+     * worker echoes the latest one on every reply, so replies to commands
+     * sent before a reload can be recognised and dropped.
+     */
+    epoch?: number;
   };
 }
 
@@ -30,7 +40,23 @@ export interface UserParams {
 export interface PhysicsState {
   type: 'state_update';
   payload: PhysicsStatePayload;
+  epoch: number;             // Scenario generation (last init/reset) this state belongs to
 }
+
+/** Reply sent instead of a state_update when a command cannot complete. */
+export interface PhysicsError {
+  type: 'error';
+  payload: {
+    message: string;
+    stack?: string;
+    command: PhysicsCommand['type'];
+    initialized: boolean;    // Whether the worker still holds a usable model
+  };
+  epoch: number;
+}
+
+/** Every message the physics worker posts to the main thread. */
+export type PhysicsWorkerMessage = PhysicsState | PhysicsError;
 
 export interface PhysicsStatePayload {
   year: number;
@@ -123,6 +149,11 @@ export interface ScenarioConfig {
   P_snow_base: number;       // Base snowfall rate (m/yr ice eq.)
   enable_hydrology: boolean;
   sea_level_potential?: number;
+  /**
+   * Side-wall drag on floating ice (Pa·yr/m²) when there are no observed
+   * speeds to invert; defaults to LATERAL_DRAG_DEFAULT. 0 = unconfined shelf.
+   */
+  lateral_drag?: number;
   geometry?: FlowlineGeometry;
   region_info?: ScenarioRegionInfo;
 }
@@ -154,7 +185,15 @@ export interface ModelState {
   W: Float64Array;           // Normalized subglacial water (0-1)
 
   // Basal friction (from inversion, if available)
-  C_basal?: Float64Array;    // Inverted basal friction coefficient C(x) (Pa m^{-1/3} s^{1/3})
+  C_basal?: Float64Array;    // Inverted Weertman coefficient C(x) (Pa (m/yr)^{-1/3})
+
+  /**
+   * Lateral (side-wall) drag on floating ice, γ(x) in Pa·yr/m² per unit
+   * volume: the momentum balance gains −γ·u. Stands in for the embayment
+   * buttressing a 2D flowline cannot resolve; inverted from observed shelf
+   * speeds when available.
+   */
+  lateral_drag?: Float64Array;
 
   // 2D velocity field (nx × nz), row-major: u[i * nz + j]
   u: Float64Array;
@@ -184,6 +223,21 @@ export interface ModelState {
 
   // Params
   params: UserParams;
+
+  /**
+   * False when `u` was solved on the current geometry and forcing (end of
+   * the previous step), so the next step can reuse it. Anything else —
+   * including undefined — forces a fresh solve.
+   */
+  velocity_stale?: boolean;
+
+  // Event bookkeeping (threshold-crossing events fire once, not every step)
+  peak_warming?: number;            // Highest atmospheric/ocean ΔT applied so far (°C)
+  climate_restored_year?: number;   // Model year since which warming has been reversed (ΔT ≤ 0)
+  misi_stalled_since?: number;      // Model year since which an active MISI retreat has stalled
+  had_shelf?: boolean;              // Whether a buttressing shelf existed last step
+  sea_level_alerted_m?: number;     // Highest whole metre of SLR already announced
+  event_cooldown_until?: Partial<Record<GameEvent['type'], number>>; // model year
 }
 
 // ─── Challenge Types ────────────────────────────────────────────

@@ -2,6 +2,7 @@
  * Load and parse GMT Relief RGB colormap table.
  * Produces ocean and land LUTs split at entry 128.
  */
+import { BASE } from '../../base';
 
 import type { RGB } from './color-functions';
 
@@ -44,9 +45,10 @@ function parseRgbTableText(text: string): RGB[] {
  * Fetch and parse the GMT Relief colormap, returning ocean (0-127) and land (128-255) LUTs.
  */
 export async function loadGmtReliefColormap(
-  url = '/3d-ice/data/GMT_relief.rgb',
+  url = `${BASE}/3d-ice/data/GMT_relief.rgb`,
+  init?: { readonly signal?: AbortSignal },
 ): Promise<ColorTableResult> {
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: init?.signal });
   if (!response.ok) {
     throw new Error(`Failed to load colormap: ${response.status} ${response.statusText}`);
   }

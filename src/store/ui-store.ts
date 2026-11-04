@@ -14,11 +14,20 @@ const applyTheme = (theme: Theme) => {
   document.documentElement.dataset.theme = theme;
 };
 
+const DARK_SCHEME_QUERY = '(prefers-color-scheme: dark)';
+
+const systemTheme = (): Theme => (window.matchMedia(DARK_SCHEME_QUERY).matches ? 'dark' : 'light');
+
+let systemThemeListenerAttached = false;
+
 interface UIStore {
   // Theme
   theme: Theme;
+  /** True once the user picked a theme; until then the OS preference is followed. */
+  themeChosen: boolean;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
+  /** Apply the persisted choice, or the OS preference when the user never chose. */
   initTheme: () => void;
 
   // Language
@@ -60,26 +69,34 @@ interface UIStore {
   toggleCanvasTooltips: () => void;
 }
 
+type PersistedUIState = Pick<
+  UIStore, 'theme' | 'themeChosen' | 'language' | 'overlayMode' | 'showCanvasTooltips'
+>;
+
 export const useUIStore = create<UIStore>()(persist(
-  (set) => ({
+  (set, get) => ({
   theme: 'light',
+  themeChosen: false,
   setTheme: (theme) => {
     applyTheme(theme);
-    set({ theme });
+    set({ theme, themeChosen: true });
   },
   toggleTheme: () =>
     set((s) => {
       const next: Theme = s.theme === 'light' ? 'dark' : 'light';
       applyTheme(next);
-      return { theme: next };
+      return { theme: next, themeChosen: true };
     }),
   initTheme: () => {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const initial: Theme = prefersDark ? 'dark' : 'light';
+    const { theme, themeChosen } = get();
+    const initial = themeChosen ? theme : systemTheme();
     applyTheme(initial);
     set({ theme: initial });
 
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (systemThemeListenerAttached) return;
+    systemThemeListenerAttached = true;
+    window.matchMedia(DARK_SCHEME_QUERY).addEventListener('change', (e) => {
+      if (get().themeChosen) return;
       const next: Theme = e.matches ? 'dark' : 'light';
       applyTheme(next);
       set({ theme: next });
@@ -120,8 +137,16 @@ export const useUIStore = create<UIStore>()(persist(
 }),
   {
     name: 'sl-ice-ui',
-    partialize: (state) => ({
+    version: 1,
+    // v0 stored the theme without recording whether the user picked it; it is
+    // the last theme they saw, so keep it rather than reverting to the OS.
+    migrate: (persisted, version) => {
+      const state = (persisted ?? {}) as Partial<PersistedUIState>;
+      return version < 1 && state.theme ? { ...state, themeChosen: true } : state;
+    },
+    partialize: (state): PersistedUIState => ({
       theme: state.theme,
+      themeChosen: state.themeChosen,
       language: state.language,
       overlayMode: state.overlayMode,
       showCanvasTooltips: state.showCanvasTooltips,

@@ -2,6 +2,7 @@
  * Fetch and decode BedMachine Antarctica binary data.
  * Returns decoded Float32Arrays for bed, surface, thickness and Uint8Array mask.
  */
+import { BASE } from '../../base';
 
 import {
   decodeInt16Field,
@@ -30,7 +31,7 @@ export interface TerrainData {
  * Load BedMachine binary + metadata, returning decoded terrain arrays.
  */
 export async function loadBedMachine(
-  basePath = '/3d-ice/data/bedmachine_antarctica_v4_480',
+  basePath = `${BASE}/3d-ice/data/bedmachine_antarctica_v4_480`,
 ): Promise<TerrainData> {
   const [metaResponse, binResponse] = await Promise.all([
     fetch(`${basePath}.meta.json`),

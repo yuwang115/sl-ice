@@ -2,7 +2,7 @@
  * Collapsible sidebar section with icon and rotating chevron.
  */
 
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
 interface SidebarSectionProps {
   title: string;
@@ -18,6 +18,7 @@ export default function SidebarSection({
   children,
 }: SidebarSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
+  const contentId = useId();
 
   return (
     <div className="mb-3">
@@ -27,6 +28,7 @@ export default function SidebarSection({
         className="flex w-full items-center gap-2 py-2 transition-colors"
         style={{ color: 'var(--text-secondary)' }}
         aria-expanded={open}
+        aria-controls={contentId}
       >
         <span className="flex-shrink-0 opacity-60" style={{ width: 16, height: 16 }}>
           {icon}
@@ -53,9 +55,12 @@ export default function SidebarSection({
         </svg>
       </button>
 
+      {/* inert: collapsed controls must not be focusable or announced */}
       <div
+        id={contentId}
         className="grid transition-[grid-template-rows] duration-200 ease-in-out"
         style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
+        inert={!open}
       >
         <div className="overflow-hidden">
           <div className="pt-1 pb-2">{children}</div>

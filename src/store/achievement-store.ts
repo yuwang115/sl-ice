@@ -22,10 +22,16 @@ export interface AchievementDef {
 interface AchievementStore {
   unlocked: Record<string, number>; // id → timestamp
   pending: AchievementDef | null; // toast to show
+  /** Model years simulated across all runs and sessions. */
+  totalYearsSimulated: number;
   unlock: (id: string) => void;
   dismissToast: () => void;
   isUnlocked: (id: string) => boolean;
+  addSimulatedYears: (years: number) => void;
 }
+
+/** Simulated years required for the time_traveler achievement. */
+export const TIME_TRAVELER_YEARS = 10000;
 
 export const achievements: AchievementDef[] = [
   // Beginner
@@ -101,11 +107,11 @@ export const achievements: AchievementDef[] = [
     id: 'extremist',
     name_en: 'The Extremist',
     name_zh: '极端主义者',
-    description_en: 'Set temperature to +20°C and observe the consequences',
-    description_zh: '将温度设为+20°C并观察后果',
+    description_en: 'Set atmospheric warming to its maximum (+10°C) and observe the consequences',
+    description_zh: '将大气升温调到最大（+10°C）并观察后果',
     icon: '🔥',
     category: 'explorer',
-    insight_en: 'At +20°C, no ice sheet on Earth could survive. The last time temperatures were even 5°C warmer, sea level was 20m higher.',
+    insight_en: 'At +10°C, no ice sheet on Earth could survive. The last time temperatures were even 5°C warmer, sea level was 20m higher.',
     insight_zh: '在+20°C时，地球上没有冰盖能够存活。上一次温度哪怕只高5°C时，海平面就高了20米。',
   },
   {
@@ -191,14 +197,14 @@ export const achievements: AchievementDef[] = [
   },
   {
     id: 'zero_intervention',
-    name_en: 'Zero Intervention',
-    name_zh: '零干预',
-    description_en: 'Win "The Balance" without changing any parameters',
-    description_zh: '不调任何参数就通关"稳态之道"',
+    name_en: 'Light Touch',
+    name_zh: '一次到位',
+    description_en: 'Win "The Balance" with a single parameter change',
+    description_zh: '只调整一次参数就通关"稳态之道"',
     icon: '🧘',
     category: 'hidden',
-    insight_en: 'Some ice sheets are naturally stable — they self-correct small perturbations. But this stability has limits.',
-    insight_zh: '有些冰盖天然稳定——它们能自我修正小扰动。但这种稳定性有其极限。',
+    insight_en: 'On a prograde bed an ice sheet settles again once the forcing eases, so one well-chosen correction is enough. But the longer you wait, the more ice is lost first.',
+    insight_zh: '在正坡基岩上，强迫减弱后冰盖会重新稳定下来，所以一次恰当的修正就够了。但等得越久，先损失的冰就越多。',
   },
   {
     id: 'last_second',
@@ -228,6 +234,7 @@ export const useAchievementStore = create<AchievementStore>()(persist(
   (set, get) => ({
     unlocked: {},
     pending: null,
+    totalYearsSimulated: 0,
 
     unlock: (id) => {
       if (get().unlocked[id]) return; // Already unlocked
@@ -243,9 +250,17 @@ export const useAchievementStore = create<AchievementStore>()(persist(
     dismissToast: () => set({ pending: null }),
 
     isUnlocked: (id) => !!get().unlocked[id],
+
+    addSimulatedYears: (years) => {
+      if (!(years > 0)) return;
+      set((s) => ({ totalYearsSimulated: s.totalYearsSimulated + years }));
+    },
   }),
   {
     name: 'sl-ice-achievements',
-    partialize: (state) => ({ unlocked: state.unlocked }),
+    partialize: (state) => ({
+      unlocked: state.unlocked,
+      totalYearsSimulated: state.totalYearsSimulated,
+    }),
   },
 ));

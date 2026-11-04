@@ -5,14 +5,19 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { BASE } from '../../base';
 import { useGameStore } from '../../store/game-store';
-import { usePhysicsStore } from '../../store/physics-store';
 import { useUIStore } from '../../store/ui-store';
 import { useExplorerStore } from '../../store/explorer-store';
 import { projectFlowlinePath } from '../../lib/terrain/projection';
+import { getFlowlineFocusPoint } from '../../lib/terrain/flowline-focus';
 import FlowlineListPanel, { type FlowlineCatalogEntry } from './FlowlineListPanel';
 import ThemeToggle from '../controls/ThemeToggle';
 import AntarcticaScene from '../explorer/AntarcticaScene';
+import { CatalogError, LaunchErrorBanner } from '../explorer/ExplorerNotices';
+import { useFlowlineCatalog } from '../explorer/useFlowlineCatalog';
+import { useScenarioLaunch } from '../explorer/useScenarioLaunch';
+import { useTerrainLoader } from '../explorer/useTerrainLoader';
 import type { GameMode } from '../../engine/types';
 
 // ── Welcome Overlay (first-visit branding) ──────────────────────────
@@ -47,7 +52,7 @@ function WelcomeOverlay({ onDismiss, isZh }: { onDismiss: () => void; isZh: bool
       <div className="w-full max-w-md md:max-w-xl px-4 flex flex-col items-center">
         {/* Logo */}
         <img
-          src={theme === 'dark' ? '/SL-ICE logo dark.png' : '/SL-ICE logo light.png'}
+          src={theme === 'dark' ? `${BASE}/SL-ICE logo dark.png` : `${BASE}/SL-ICE logo light.png`}
           alt="SLICE"
           className="w-full h-auto mb-6"
           style={{ filter: 'drop-shadow(0 0 20px rgba(56,189,248,0.3))' }}
@@ -160,14 +165,35 @@ function ModeMenu({ isZh }: { isZh: boolean }) {
   );
 }
 
+// ── Transition target ───────────────────────────────────────────────
+
+/**
+ * World-space camera target for a flowline (path midpoint), or null when the
+ * terrain is not loaded — the transition then skips the camera zoom.
+ */
+function getTransitionTargetPoint(entry: FlowlineCatalogEntry): [number, number, number] | null {
+  const { terrain, exaggeration } = useExplorerStore.getState();
+  if (!terrain || entry.path_lonlat.length === 0) return null;
+
+  const { grid } = terrain;
+  const localPoints = projectFlowlinePath(
+    entry.path_lonlat,
+    grid,
+    terrain.horizontalMetersPerUnit,
+    terrain.verticalMetersPerUnit,
+    terrain.surfaceHeights,
+    grid.nx,
+    grid.ny,
+  );
+  return getFlowlineFocusPoint(localPoints, exaggeration);
+}
+
 // ── Main Component ──────────────────────────────────────────────────
 
 export default function AntarcticaExplorer() {
-  const { selectFlowline, setRunning } = useGameStore();
-  const { loadScenario } = usePhysicsStore();
   const language = useUIStore((s) => s.language);
   const theme = useUIStore((s) => s.theme);
-  const { toggleLanguage } = useUIStore();
+  const toggleLanguage = useUIStore((s) => s.toggleLanguage);
   const isZh = language === 'zh';
 
   // Explorer store for bidirectional sync
@@ -176,112 +202,16 @@ export default function AntarcticaExplorer() {
   const setHoveredFlowline = useExplorerStore((s) => s.setHoveredFlowline);
   const setSelectedFlowline = useExplorerStore((s) => s.setSelectedFlowline);
   const startTransition = useExplorerStore((s) => s.startTransition);
-  const transitionPhase = useExplorerStore((s) => s.transitionPhase);
-  const transitionFlowlineId = useExplorerStore((s) => s.transitionFlowlineId);
-  const isTransitioning = useExplorerStore((s) => s.isTransitioning);
-  const resetExplorer = useExplorerStore((s) => s.reset);
-  const surfaceHeights = useExplorerStore((s) => s.surfaceHeights);
-  const gridNx = useExplorerStore((s) => s.gridNx);
-  const gridNy = useExplorerStore((s) => s.gridNy);
-  const horizontalMetersPerUnit = useExplorerStore((s) => s.horizontalMetersPerUnit);
-  const verticalMetersPerUnit = useExplorerStore((s) => s.verticalMetersPerUnit);
 
-  const [catalog, setCatalog] = useState<FlowlineCatalogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Terrain (~5 MB) starts downloading now, in parallel with the catalog.
+  useTerrainLoader();
+  const { status: catalogStatus, entries: catalog, error: catalogError, retry: retryCatalog } = useFlowlineCatalog();
+  const { launchError, dismissLaunchError } = useScenarioLaunch(catalog);
   const [showWelcome, setShowWelcome] = useState(true);
 
-  // Pre-fetched scenario config during transition
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pendingConfigRef = useRef<any>(null);
-
-  useEffect(() => {
-    fetch('/data/flowline-catalog.json')
-      .then(r => r.json())
-      .then((cat: FlowlineCatalogEntry[]) => {
-        setCatalog(cat);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Failed to load flow line catalog:', err);
-        setLoading(false);
-      });
-  }, []);
-
-  // Reset explorer state when unmounting
-  useEffect(() => {
-    return () => {
-      resetExplorer();
-    };
-  }, [resetExplorer]);
-
-  // Pre-fetch scenario JSON as soon as transition starts (during camera zoom)
-  useEffect(() => {
-    if (isTransitioning && transitionFlowlineId && !pendingConfigRef.current) {
-      const entry = catalog.find((c) => c.id === transitionFlowlineId);
-      if (entry) {
-        fetch(`/data/scenarios/${entry.scenario}.json`)
-          .then((r) => r.json())
-          .then((config) => { pendingConfigRef.current = config; })
-          .catch((err) => console.error('Pre-fetch scenario failed:', err));
-      }
-    }
-    if (!isTransitioning) {
-      pendingConfigRef.current = null;
-    }
-  }, [isTransitioning, transitionFlowlineId, catalog]);
-
-  // When transition reaches 'complete', switch to simulation view instantly
-  useEffect(() => {
-    if (transitionPhase !== 'complete' || !transitionFlowlineId) return;
-
-    const entry = catalog.find((c) => c.id === transitionFlowlineId);
-    if (!entry) return;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const doSwitch = (config: any) => {
-      loadScenario(config);
-      selectFlowline(entry.id);
-      setRunning(true);
-    };
-
-    if (pendingConfigRef.current) {
-      doSwitch(pendingConfigRef.current);
-    } else {
-      // Fallback: fetch now (should rarely happen)
-      fetch(`/data/scenarios/${entry.scenario}.json`)
-        .then((r) => r.json())
-        .then(doSwitch)
-        .catch((err) => console.error('Scenario fetch failed:', err));
-    }
-  }, [transitionPhase, transitionFlowlineId, catalog, loadScenario, selectFlowline, setRunning]);
-
-  const getTransitionTargetPoint = useCallback(
-    (entry: FlowlineCatalogEntry): [number, number, number] | null => {
-      if (!surfaceHeights || gridNx === 0 || gridNy === 0 || entry.path_lonlat.length === 0) {
-        return null;
-      }
-
-      const projectedPoints = projectFlowlinePath(
-        entry.path_lonlat,
-        {
-          x0_m: -3_333_000,
-          y0_m: 3_333_000,
-          dx_m: 10_000,
-          dy_m: -10_000,
-          nx: gridNx,
-          ny: gridNy,
-        },
-        horizontalMetersPerUnit,
-        verticalMetersPerUnit,
-        surfaceHeights,
-        gridNx,
-        gridNy,
-      );
-
-      return projectedPoints[Math.floor(projectedPoints.length / 2)] ?? null;
-    },
-    [surfaceHeights, gridNx, gridNy, horizontalMetersPerUnit, verticalMetersPerUnit],
-  );
+  // Leaving the explorer: drop selection and view settings, but keep the
+  // decoded terrain cached and let the slice transition finish its reveal.
+  useEffect(() => () => useExplorerStore.getState().resetSession(), []);
 
   /**
    * Trigger a transition-wrapped simulate (used by sidebar + floating button).
@@ -290,17 +220,22 @@ export default function AntarcticaExplorer() {
    */
   const handleSimulateWithTransition = useCallback(
     (entry: FlowlineCatalogEntry) => {
+      dismissLaunchError();
       startTransition(entry.id, getTransitionTargetPoint(entry));
     },
-    [startTransition, getTransitionTargetPoint],
+    [dismissLaunchError, startTransition],
   );
 
-  if (loading) {
+  if (catalogStatus === 'loading') {
     return (
       <div className="flex items-center justify-center h-full" style={{ color: 'var(--text-muted)' }}>
         <span className="animate-glow">{isZh ? '加载中...' : 'Loading...'}</span>
       </div>
     );
+  }
+
+  if (catalogStatus === 'error') {
+    return <CatalogError isZh={isZh} detail={catalogError} onRetry={retryCatalog} />;
   }
 
   return (
@@ -317,7 +252,7 @@ export default function AntarcticaExplorer() {
         {/* Left: Logo + mode menu */}
         <div className="flex items-center gap-3">
           <img
-            src={theme === 'dark' ? '/SL-ICE logo dark.png' : '/SL-ICE logo light.png'}
+            src={theme === 'dark' ? `${BASE}/SL-ICE logo dark.png` : `${BASE}/SL-ICE logo light.png`}
             alt="SLICE"
             className="h-6 w-auto"
             draggable={false}
@@ -348,6 +283,15 @@ export default function AntarcticaExplorer() {
         {/* 3D scene */}
         <div className="flex-1 min-w-0 relative">
           <AntarcticaScene catalog={catalog} onSimulate={handleSimulateWithTransition} />
+          {launchError && (
+            <LaunchErrorBanner
+              isZh={isZh}
+              entry={launchError.entry}
+              detail={launchError.detail}
+              onRetry={() => handleSimulateWithTransition(launchError.entry)}
+              onDismiss={dismissLaunchError}
+            />
+          )}
         </div>
 
         {/* Flow line sidebar with bidirectional sync */}

@@ -6,6 +6,7 @@ import {
   bandAdd,
   bandClear,
   bandSolve,
+  bandSolveNoPivot,
 } from '../../src/engine/matrix/banded';
 
 describe('BandedMatrix operations', () => {
@@ -13,9 +14,12 @@ describe('BandedMatrix operations', () => {
     const mat = createBandedMatrix(5, 2);
     expect(mat.n).toBe(5);
     expect(mat.halfBand).toBe(2);
-    expect(mat.bands.length).toBe(5); // 2*2+1
-    for (const band of mat.bands) {
-      expect(band.every((v) => v === 0)).toBe(true);
+    expect(mat.width).toBe(5); // 2*2+1
+    expect(mat.data.length).toBe(25);
+    for (let r = 0; r < 5; r++) {
+      for (let c = 0; c < 5; c++) {
+        expect(bandGet(mat, r, c)).toBe(0);
+      }
     }
   });
 
@@ -121,5 +125,94 @@ describe('bandSolve', () => {
     // Should not throw, second element should be correct
     expect(Number.isFinite(x[1])).toBe(true);
     expect(x[1]).toBeCloseTo(2);
+  });
+});
+
+/** Dense Gaussian elimination with partial pivoting (reference solver). */
+function denseSolve(A: number[][], b: number[]): number[] {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let k = 0; k < n; k++) {
+    let p = k;
+    for (let i = k + 1; i < n; i++) if (Math.abs(M[i][k]) > Math.abs(M[p][k])) p = i;
+    [M[k], M[p]] = [M[p], M[k]];
+    for (let i = k + 1; i < n; i++) {
+      const f = M[i][k] / M[k][k];
+      for (let j = k; j <= n; j++) M[i][j] -= f * M[k][j];
+    }
+  }
+  const x = new Array<number>(n).fill(0);
+  for (let k = n - 1; k >= 0; k--) {
+    let s = M[k][n];
+    for (let j = k + 1; j < n; j++) s -= M[k][j] * x[j];
+    x[k] = s / M[k][k];
+  }
+  return x;
+}
+
+/**
+ * BP-shaped system (nx columns × nz levels): identity rows at the divide,
+ * [1, -1] free-slip/surface rows and 5-point interior rows. Unit-scaled BC
+ * rows next to large interior coefficients force row swaps under partial
+ * pivoting, which create fill-in beyond the original upper band.
+ */
+function bpShapedSystem(nx: number, nz: number) {
+  const n = nx * nz;
+  const A = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+  const rhs = new Array<number>(n).fill(0);
+  for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < nz; j++) {
+      const k = i * nz + j;
+      if (i === 0) { A[k][k] = 1; continue; }
+      if (j === nz - 1) { A[k][k] = 1; A[k][k - 1] = -1; continue; }
+      if (j === 0) { A[k][k] = 1; A[k][k + 1] = -1; continue; }
+      const cx = 3 + Math.sin(i);
+      const cs = 1000 + 100 * Math.cos(i + j);
+      const cxr = i < nx - 1 ? cx : 0;
+      A[k][k] = -(cx + cxr + 2 * cs);
+      A[k][k - nz] = cx;
+      if (i < nx - 1) A[k][k + nz] = cxr;
+      A[k][k - 1] = cs;
+      A[k][k + 1] = cs;
+      rhs[k] = -1 - 0.1 * i;
+    }
+  }
+  const mat = createBandedMatrix(n, nz);
+  for (let r = 0; r < n; r++) {
+    for (let c = Math.max(0, r - nz); c <= Math.min(n - 1, r + nz); c++) {
+      if (A[r][c] !== 0) bandSet(mat, r, c, A[r][c]);
+    }
+  }
+  return { A, rhs, mat, n };
+}
+
+function relativeError(x: Float64Array, ref: number[]): number {
+  let err = 0;
+  let norm = 0;
+  for (let i = 0; i < ref.length; i++) {
+    err += (x[i] - ref[i]) ** 2;
+    norm += ref[i] ** 2;
+  }
+  return Math.sqrt(err / norm);
+}
+
+describe('banded solvers on BP-shaped systems', () => {
+  it('bandSolve keeps fill-in created by row swaps (matches dense GEPP)', () => {
+    const { A, rhs, mat } = bpShapedSystem(12, 6);
+    const x = bandSolve(mat, Float64Array.from(rhs));
+    expect(relativeError(x, denseSolve(A, rhs))).toBeLessThan(1e-10);
+  });
+
+  it('bandSolve leaves the input matrix untouched', () => {
+    const { mat } = bpShapedSystem(4, 3);
+    const before = Float64Array.from(mat.data);
+    bandSolve(mat, new Float64Array(mat.n).fill(1));
+    expect(Array.from(mat.data)).toEqual(Array.from(before));
+  });
+
+  it('bandSolveNoPivot solves diagonally dominant BP systems accurately', () => {
+    const { A, rhs, mat } = bpShapedSystem(12, 6);
+    const x = bandSolveNoPivot(mat, Float64Array.from(rhs));
+    expect(relativeError(x, denseSolve(A, rhs))).toBeLessThan(1e-8);
   });
 });

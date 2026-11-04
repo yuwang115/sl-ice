@@ -1,3 +1,5 @@
+import { BASE } from '../../base';
+
 interface HeroSectionProps {
   lang: 'en' | 'zh';
   theme: 'light' | 'dark';
@@ -13,7 +15,7 @@ export function HeroSection({ lang, theme }: HeroSectionProps) {
       {/* Logo */}
       <div className="hero-stagger-1 mb-6">
         <img
-          src={theme === 'dark' ? '/SL-ICE logo light.png' : '/SL-ICE logo dark.png'}
+          src={theme === 'dark' ? `${BASE}/SL-ICE logo light.png` : `${BASE}/SL-ICE logo dark.png`}
           alt="SL-ICE"
           className="h-20 sm:h-28 md:h-36 mx-auto"
         />
@@ -40,7 +42,7 @@ export function HeroSection({ lang, theme }: HeroSectionProps) {
       {/* CTA Buttons */}
       <div className="hero-stagger-4 flex flex-col sm:flex-row gap-3 mt-8 md:mt-10">
         <a
-          href="/index.html"
+          href={`${BASE}/index.html`}
           className="pill-btn active"
           style={{
             padding: '12px 32px',

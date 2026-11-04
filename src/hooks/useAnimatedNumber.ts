@@ -6,11 +6,11 @@ import { useEffect, useRef, useState } from 'react';
 
 export function useAnimatedNumber(target: number, duration = 300): number {
   const [display, setDisplay] = useState(target);
-  const prevRef = useRef(target);
+  const currentRef = useRef(target);
   const rafRef = useRef(0);
 
   useEffect(() => {
-    const from = prevRef.current;
+    const from = currentRef.current;
     const delta = target - from;
 
     cancelAnimationFrame(rafRef.current);
@@ -18,7 +18,7 @@ export function useAnimatedNumber(target: number, duration = 300): number {
     // Skip animation for negligible changes (< 0.1% of value range)
     if (Math.abs(delta) < Math.abs(target) * 0.001 && Math.abs(delta) < 0.01) {
       rafRef.current = requestAnimationFrame(() => {
-        prevRef.current = target;
+        currentRef.current = target;
         setDisplay(target);
       });
       return () => cancelAnimationFrame(rafRef.current);
@@ -33,12 +33,11 @@ export function useAnimatedNumber(target: number, duration = 300): number {
       const eased = 1 - (1 - progress) ** 3;
       const current = from + delta * eased;
 
+      currentRef.current = current;
       setDisplay(current);
 
       if (progress < 1) {
         rafRef.current = requestAnimationFrame(tick);
-      } else {
-        prevRef.current = target;
       }
     };
 

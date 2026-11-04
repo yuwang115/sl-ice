@@ -1,21 +1,19 @@
 /**
  * Explorer-specific state — terrain data, loading, flowline interaction, layer toggles.
  * Kept separate from game-store to avoid bloating the main simulation state.
+ *
+ * The decoded terrain (~60 MB of typed arrays) is a cache: it survives leaving
+ * the explorer (`resetSession`) so coming back does not refetch, re-decode and
+ * rebuild everything. Only `reset` drops it.
  */
 
 import { create } from 'zustand';
-import type { MeshArrays, VelocityMeshArrays } from '../lib/terrain/mesh-builder';
-import type { RGB } from '../lib/terrain/color-functions';
+import type { TerrainErrorKind } from '../lib/terrain/terrain-loader';
+import type { ExplorerTerrain, TerrainLoadStep } from '../lib/terrain/terrain-types';
 
 // ── Types ────────────────────────────────────────────────────────────
 
-export type LoadingStage =
-  | 'idle'
-  | 'fetching'
-  | 'decoding'
-  | 'building'
-  | 'ready'
-  | 'error';
+export type LoadingStage = 'idle' | 'loading' | 'ready' | 'error';
 
 export type TransitionPhase =
   | 'idle'
@@ -25,33 +23,24 @@ export type TransitionPhase =
   | 'complete'
   | 'reveal';
 
+export interface TerrainLoadFailure {
+  readonly kind: TerrainErrorKind;
+  /** Technical detail (English) shown under the bilingual headline. */
+  readonly detail: string;
+}
+
+export type ScenePoint = [number, number, number];
+
 export interface ExplorerStore {
-  // Loading
+  // Terrain loading
   loadingStage: LoadingStage;
   loadingProgress: number;
-  loadingLabel: string;
-  errorMessage: string | null;
-
-  // Scale factors (set by worker result)
-  horizontalMetersPerUnit: number;
-  verticalMetersPerUnit: number;
-
-  // Decoded grid arrays (for flowline projection & profile sampling)
-  surfaceHeights: Float32Array | null;
-  bedHeights: Float32Array | null;
-  thicknessData: Float32Array | null;
-  gridNx: number;
-  gridNy: number;
-
-  // Pre-built geometry arrays
-  bedArrays: MeshArrays | null;
-  iceArrays: MeshArrays | null;
-  iceSideArrays: MeshArrays | null;
-  iceBottomArrays: MeshArrays | null;
-  velocityArrays: VelocityMeshArrays | null;
-
-  // Color table
-  bedColorTable: { ocean: RGB[]; land: RGB[] } | null;
+  loadingStep: TerrainLoadStep | null;
+  loadError: TerrainLoadFailure | null;
+  /** Bumped by retryLoading() to re-run the loader effect. */
+  loadAttempt: number;
+  /** Decoded grids + prebuilt meshes; null until the first load completes. */
+  terrain: ExplorerTerrain | null;
 
   // Flowline interaction
   hoveredFlowlineId: string | null;
@@ -60,7 +49,7 @@ export interface ExplorerStore {
   // Transition animation
   isTransitioning: boolean;
   transitionFlowlineId: string | null;
-  transitionTargetPoint: [number, number, number] | null;
+  transitionTargetPoint: ScenePoint | null;
   transitionPhase: TransitionPhase;
 
   // Layer visibility
@@ -75,74 +64,72 @@ export interface ExplorerStore {
   exaggeration: number;
 
   // ── Actions ──
-  setLoadingStage: (stage: LoadingStage, progress: number, label?: string) => void;
-  setError: (message: string) => void;
-
-  setScaleFactors: (h: number, v: number) => void;
-  setSurfaceHeights: (data: Float32Array, nx: number, ny: number) => void;
-  setBedHeights: (data: Float32Array) => void;
-  setThicknessData: (data: Float32Array) => void;
-  setBedArrays: (arrays: MeshArrays) => void;
-  setIceArrays: (arrays: MeshArrays) => void;
-  setIceSideArrays: (arrays: MeshArrays) => void;
-  setIceBottomArrays: (arrays: MeshArrays) => void;
-  setVelocityArrays: (arrays: VelocityMeshArrays) => void;
-  setBedColorTable: (table: { ocean: RGB[]; land: RGB[] }) => void;
+  beginLoading: () => void;
+  /** Progress only moves forward within one load attempt. */
+  setLoadingProgress: (progress: number, step: TerrainLoadStep) => void;
+  setTerrain: (terrain: ExplorerTerrain) => void;
+  setLoadError: (failure: TerrainLoadFailure) => void;
+  /** Return an unfinished load to 'idle' (no-op once terrain is cached). */
+  resetLoading: () => void;
+  /** Clear a load error and trigger a fresh attempt. */
+  retryLoading: () => void;
 
   setHoveredFlowline: (id: string | null) => void;
   setSelectedFlowline: (id: string | null) => void;
 
   /** Start the slice transition animation toward a flowline. */
-  startTransition: (flowlineId: string, targetPoint: [number, number, number] | null) => void;
+  startTransition: (flowlineId: string, targetPoint: ScenePoint | null) => void;
   setTransitionPhase: (phase: TransitionPhase) => void;
 
   toggleLayer: (layer: 'ice' | 'velocity' | 'flowlines') => void;
   setIceOpacity: (value: number) => void;
   setExaggeration: (value: number) => void;
 
-  /** Reset all state (when leaving explorer mode). */
+  /**
+   * Leaving the explorer: reset hover/selection and view settings, but keep
+   * the terrain cache and let an in-flight transition finish its reveal.
+   */
+  resetSession: () => void;
+  /** Reset everything, including the terrain cache and transition timers. */
   reset: () => void;
 }
 
 // ── Initial state ────────────────────────────────────────────────────
 
-const initialState = {
+const initialLoadingState = {
   loadingStage: 'idle' as LoadingStage,
   loadingProgress: 0,
-  loadingLabel: '',
-  errorMessage: null as string | null,
+  loadingStep: null as TerrainLoadStep | null,
+  loadError: null as TerrainLoadFailure | null,
+};
 
-  horizontalMetersPerUnit: 1,
-  verticalMetersPerUnit: 1,
-
-  surfaceHeights: null as Float32Array | null,
-  bedHeights: null as Float32Array | null,
-  thicknessData: null as Float32Array | null,
-  gridNx: 0,
-  gridNy: 0,
-
-  bedArrays: null as MeshArrays | null,
-  iceArrays: null as MeshArrays | null,
-  iceSideArrays: null as MeshArrays | null,
-  iceBottomArrays: null as MeshArrays | null,
-  velocityArrays: null as VelocityMeshArrays | null,
-  bedColorTable: null as { ocean: RGB[]; land: RGB[] } | null,
-
+const initialInteractionState = {
   hoveredFlowlineId: null as string | null,
   selectedFlowlineId: null as string | null,
+};
 
-  isTransitioning: false,
-  transitionFlowlineId: null as string | null,
-  transitionTargetPoint: null as [number, number, number] | null,
-  transitionPhase: 'idle' as TransitionPhase,
-
+const initialViewState = {
   showIce: true,
   showVelocity: false,
   showFlowlines: true,
-
   iceOpacity: 0.65,
-
   exaggeration: 4.8,
+};
+
+const initialTransitionState = {
+  isTransitioning: false,
+  transitionFlowlineId: null as string | null,
+  transitionTargetPoint: null as ScenePoint | null,
+  transitionPhase: 'idle' as TransitionPhase,
+};
+
+const initialState = {
+  ...initialLoadingState,
+  loadAttempt: 0,
+  terrain: null as ExplorerTerrain | null,
+  ...initialInteractionState,
+  ...initialTransitionState,
+  ...initialViewState,
 };
 
 // ── Transition timer management (module-level, outside React lifecycle) ──
@@ -163,26 +150,24 @@ function schedulePhase(ms: number, action: () => void) {
 export const useExplorerStore = create<ExplorerStore>((set, get) => ({
   ...initialState,
 
-  setLoadingStage: (stage, progress, label) =>
-    set({ loadingStage: stage, loadingProgress: progress, loadingLabel: label ?? '' }),
+  beginLoading: () => set({ ...initialLoadingState, loadingStage: 'loading' }),
 
-  setError: (message) =>
-    set({ loadingStage: 'error', errorMessage: message }),
+  setLoadingProgress: (progress, step) =>
+    set((s) => (s.loadingStage === 'loading'
+      ? { loadingProgress: Math.max(s.loadingProgress, progress), loadingStep: step }
+      : {})),
 
-  setScaleFactors: (h, v) =>
-    set({ horizontalMetersPerUnit: h, verticalMetersPerUnit: v }),
+  setTerrain: (terrain) =>
+    set({ terrain, loadingStage: 'ready', loadingProgress: 1, loadingStep: null, loadError: null }),
 
-  setSurfaceHeights: (data, nx, ny) =>
-    set({ surfaceHeights: data, gridNx: nx, gridNy: ny }),
-  setBedHeights: (data) => set({ bedHeights: data }),
-  setThicknessData: (data) => set({ thicknessData: data }),
+  setLoadError: (failure) => set({ loadingStage: 'error', loadError: failure }),
 
-  setBedArrays: (arrays) => set({ bedArrays: arrays }),
-  setIceArrays: (arrays) => set({ iceArrays: arrays }),
-  setIceSideArrays: (arrays) => set({ iceSideArrays: arrays }),
-  setIceBottomArrays: (arrays) => set({ iceBottomArrays: arrays }),
-  setVelocityArrays: (arrays) => set({ velocityArrays: arrays }),
-  setBedColorTable: (table) => set({ bedColorTable: table }),
+  resetLoading: () => {
+    if (get().terrain) return;
+    set({ ...initialLoadingState });
+  },
+
+  retryLoading: () => set((s) => ({ ...initialLoadingState, loadAttempt: s.loadAttempt + 1 })),
 
   setHoveredFlowline: (id) => set({ hoveredFlowlineId: id }),
   setSelectedFlowline: (id) => set({ selectedFlowlineId: id }),
@@ -202,12 +187,7 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
 
     const cleanup = () => {
       clearTransitionTimers();
-      set({
-        isTransitioning: false,
-        transitionFlowlineId: null,
-        transitionTargetPoint: null,
-        transitionPhase: 'idle',
-      });
+      set({ ...initialTransitionState });
     };
 
     // Schedule phase transitions — each guarded against cancelled transitions
@@ -238,6 +218,8 @@ export const useExplorerStore = create<ExplorerStore>((set, get) => ({
 
   setIceOpacity: (value) => set({ iceOpacity: value }),
   setExaggeration: (value) => set({ exaggeration: value }),
+
+  resetSession: () => set({ ...initialInteractionState, ...initialViewState }),
 
   reset: () => {
     clearTransitionTimers();

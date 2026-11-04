@@ -1,3 +1,5 @@
+import { BASE } from '../../base';
+
 interface CallToActionProps {
   lang: 'en' | 'zh';
 }
@@ -31,7 +33,7 @@ export function CallToAction({ lang }: CallToActionProps) {
         </p>
 
         <a
-          href="/index.html"
+          href={`${BASE}/index.html`}
           className="pill-btn active animate-breathe inline-flex"
           style={{
             padding: '14px 40px',

@@ -107,6 +107,7 @@ export default function Dashboard() {
 
   const interactionRef = useRef<PointerInteraction | null>(null);
   const hasInteractedRef = useRef(false);
+  const panelRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (canvasWidth <= 0 || canvasHeight <= 0) return;
@@ -129,7 +130,8 @@ export default function Dashboard() {
       const deltaY = event.clientY - active.startY;
 
       if (active.kind === 'move') {
-        setWindowRect(applyDashboardMove(active.rect, deltaX, deltaY, canvasWidth, canvasHeight));
+        const actualHeight = panelRef.current?.getBoundingClientRect().height;
+        setWindowRect(applyDashboardMove(active.rect, deltaX, deltaY, canvasWidth, canvasHeight, actualHeight));
         return;
       }
 
@@ -168,13 +170,12 @@ export default function Dashboard() {
       year: state.year,
       glFluxKm3Yr: state.gl_flux_km3_yr,
       massChangeGt: state.mass_change_gt,
+      glPosition: state.gl_position,
     }];
 
   // Extract last 30 points for sparklines
   const recentHistory = history.slice(-30);
-  const glPosSpark = recentHistory.map((h) =>
-    'glPosition' in h ? (h as { glPosition: number }).glPosition : 0,
-  );
+  const glPosSpark = recentHistory.map((h) => h.glPosition);
 
   const stats: Array<{
     label: string;
@@ -246,6 +247,7 @@ export default function Dashboard() {
 
   return (
     <section
+      ref={panelRef}
       role="dialog"
       aria-label={windowTitle}
       className="pointer-events-auto absolute z-10"

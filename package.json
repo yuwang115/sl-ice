@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "flowlines:build-groups": "node scripts/build-major-basin-groups.mjs",
-    "flowlines:generate": "./.venv-flowlines/bin/python3 scripts/generate-antarctica-flowlines.py"
+    "flowlines:generate": "./.venv-flowlines/bin/python3 scripts/generate-antarctica-flowlines.py",
+    "scenarios:spinup": "vite-node scripts/spinup-scenario.ts",
+    "challenges:check": "vite-node scripts/check-challenges.ts"
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.4",

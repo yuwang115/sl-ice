@@ -3,6 +3,7 @@
  */
 
 import { toCanvasX, toCanvasY, type DrawContext } from '../draw-bedrock';
+import { createSpawnBudget, frameSteps, REFERENCE_FRAME_S } from '../frame-timing';
 
 interface OceanParticle {
   x: number;
@@ -13,8 +14,12 @@ interface OceanParticle {
 }
 
 const MAX_PARTICLES = 100;
+/** Per-60 Hz-frame motion factor the velocities were tuned with. */
+const MOTION_DT = 0.016;
 let particles: OceanParticle[] = [];
+const spawnBudget = createSpawnBudget();
 
+/** `dt` is the frame time in seconds; motion, ageing and spawning scale with it. */
 export function drawOceanCurrent(
   dc: DrawContext,
   is_floating: Uint8Array,
@@ -22,20 +27,24 @@ export function drawOceanCurrent(
   H: Float64Array,
   xPositions: Float64Array,
   T_ocean_delta: number,
+  dt: number = REFERENCE_FRAME_S,
 ): void {
   const { ctx } = dc;
 
   if (T_ocean_delta <= 0) {
     // No warm current to display
     particles = [];
+    spawnBudget.clear();
     return;
   }
 
   const intensity = Math.min(1, T_ocean_delta / 3);
+  const steps = frameSteps(dt);
 
-  // Spawn from ocean side
-  if (particles.length < MAX_PARTICLES * intensity) {
-    const lastX = xPositions[xPositions.length - 1];
+  // Spawn from ocean side (one per 60 Hz frame while below the cap)
+  const due = spawnBudget.take(1, steps);
+  const lastX = xPositions[xPositions.length - 1];
+  for (let n = 0; n < due && particles.length < MAX_PARTICLES * intensity; n++) {
     particles.push({
       x: lastX + 100,
       z: -200 - Math.random() * 300,
@@ -44,13 +53,14 @@ export function drawOceanCurrent(
       maxLife: 80 + Math.random() * 80,
     });
   }
+  if (particles.length >= MAX_PARTICLES * intensity) spawnBudget.clear();
 
   const alive: OceanParticle[] = [];
 
   for (const p of particles) {
-    p.x += p.vx * 0.016;
-    p.z += (Math.random() - 0.5) * 10;
-    p.life++;
+    p.x += p.vx * MOTION_DT * steps;
+    p.z += (Math.random() - 0.5) * 10 * steps;
+    p.life += steps;
 
     if (p.life > p.maxLife) continue;
 
@@ -90,4 +100,5 @@ export function drawOceanCurrent(
 
 export function resetOceanCurrent(): void {
   particles = [];
+  spawnBudget.clear();
 }

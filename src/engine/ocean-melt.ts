@@ -63,7 +63,10 @@ function draftFromThickness(H: number): number {
 
 /**
  * Effective ocean temperature at a floating point after the geoengineering
- * curtain (if any). Preserves the original single-point semantics.
+ * curtain (if any). The curtain stands on the seafloor at curtain_position
+ * and blocks warm water flowing in from the open ocean, so it shields the
+ * cavity on its landward side (x < curtain_position); ice seaward of it
+ * still sees the open ocean. A curtain under grounded ice shields nothing.
  */
 function applyCurtain(
   T_ocean: number,
@@ -80,8 +83,8 @@ function applyCurtain(
     return T_ocean;
   }
   const curtainPosM = params.curtain_position * 1000;
-  if (x[i] <= curtainPosM) return T_ocean;
-  // Seaward of the curtain: attenuate the ΔT anomaly only — the baseline
+  if (x[i] >= curtainPosM) return T_ocean;
+  // Landward of the curtain: attenuate the ΔT anomaly only — the baseline
   // (natural) ocean temperature is unchanged.
   const dT = (T_ocean - baseline) * (1 - params.curtain_efficiency);
   return baseline + dT;

@@ -3,14 +3,23 @@
  * Shows star ratings, scores, and educational debrief on completion.
  */
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useGameStore } from '../../store/game-store';
 import { usePhysicsStore } from '../../store/physics-store';
 import { useUIStore } from '../../store/ui-store';
 import { challenges } from '../../challenges';
+import { launchChallenge, nextAvailableChallenge } from '../../challenges/launch';
 import { getNarrative } from '../../challenges/narrative';
+import { useAbortableLoad } from '../../hooks/useAbortableLoad';
+import ErrorNotice from '../ui/ErrorNotice';
 import ChallengeBriefing from './ChallengeBriefing';
-import type { ChallengeResult } from '../../store/game-store';
+import type { ChallengeResult, LocalizedMessage } from '../../store/game-store';
+
+const CHALLENGE_LOAD_ERROR: LocalizedMessage = {
+  en: 'Could not load this challenge. Check your connection and try again.',
+  zh: '无法加载该挑战。请检查网络连接后重试。',
+};
 
 /* ─── SVG Star (reusable for difficulty + rating) ────────── */
 function Star({ filled, delay = 0, size = 14, color }: { filled: boolean; delay?: number; size?: number; color?: string }) {
@@ -101,25 +110,28 @@ const conceptDebriefs: Record<string, { en: string; zh: string }> = {
   },
 };
 
-function ChallengeResultOverlay({ result }: { result: ChallengeResult }) {
-  const { dismissChallengeResult } = useGameStore();
+interface ChallengeResultOverlayProps {
+  result: ChallengeResult;
+  /** Next unlocked challenge, or null when there is none to move on to. */
+  nextChallengeId: number | null;
+  isLaunching: boolean;
+  error: LocalizedMessage | null;
+  onRetry: () => void;
+  onNext: () => void;
+  onBack: () => void;
+}
+
+function ChallengeResultOverlay({
+  result, nextChallengeId, isLaunching, error, onRetry, onNext, onBack,
+}: ChallengeResultOverlayProps) {
   const language = useUIStore((s) => s.language);
   const isZh = language === 'zh';
 
   const challenge = challenges.find((c) => c.id === result.challengeId);
   if (!challenge) return null;
 
-  const handleRetry = () => {
-    dismissChallengeResult();
-  };
-
-  const handleContinue = () => {
-    dismissChallengeResult();
-  };
-
-  const handleNextChallenge = () => {
-    dismissChallengeResult();
-  };
+  const timeUp = result.outcome === 'time_up';
+  const showNext = result.won && nextChallengeId !== null;
 
   // Pick the first concept for debrief
   const mainConcept = challenge.concepts[0];
@@ -154,7 +166,9 @@ function ChallengeResultOverlay({ result }: { result: ChallengeResult }) {
           >
             {result.won
               ? (isZh ? '挑战成功！' : 'Challenge Complete!')
-              : (isZh ? '挑战失败' : 'Challenge Failed')}
+              : timeUp
+                ? (isZh ? '时间到' : "Time's Up")
+                : (isZh ? '挑战失败' : 'Challenge Failed')}
           </h2>
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             {isZh ? challenge.name_zh : challenge.name_en}
@@ -237,29 +251,41 @@ function ChallengeResultOverlay({ result }: { result: ChallengeResult }) {
             <div className="font-semibold mb-1" style={{ color: 'var(--accent-danger)' }}>
               {isZh ? '失败并非终点' : 'Failure Is Part of Learning'}
             </div>
+            {timeUp && (
+              <p className="mb-1">
+                {isZh
+                  ? `${result.elapsedYears} 年期限已到，但胜利条件仍未达成。`
+                  : `${result.elapsedYears} years have passed and the win condition is still not met.`}
+              </p>
+            )}
             {isZh
               ? '每次失败都加深了你对冰川动力学的理解。试着重新审视参数的影响，然后再来一次。'
               : 'Each failure deepens your understanding of ice dynamics. Review how your parameter choices affected the outcome, then try again.'}
           </div>
         )}
 
+        {error && <ErrorNotice message={error} className="mb-4" />}
+
         {/* Action buttons */}
         <div className="flex gap-3">
           {!result.won && (
             <button
-              onClick={handleRetry}
+              onClick={onRetry}
+              disabled={isLaunching}
               className="pill-btn flex-1 text-sm"
               style={{ background: 'var(--accent)', color: 'white', borderColor: 'var(--accent)' }}
             >
-              {isZh ? '再试一次' : 'Try Again'}
+              {isLaunching
+                ? (isZh ? '加载中…' : 'Loading…')
+                : (isZh ? '再试一次' : 'Try Again')}
             </button>
           )}
           <button
-            onClick={result.won ? handleNextChallenge : handleContinue}
+            onClick={showNext ? onNext : onBack}
             className="pill-btn flex-1 text-sm"
             style={result.won ? { background: 'var(--accent-teal)', color: 'white', borderColor: 'var(--accent-teal)' } : undefined}
           >
-            {result.won
+            {showNext
               ? (isZh ? '下一关' : 'Next Challenge')
               : (isZh ? '返回列表' : 'Back to List')}
           </button>
@@ -363,46 +389,65 @@ function SeaLevelImpact() {
 
 /* ─── Main Component ────────────────────────────────────── */
 export default function ChallengePanel() {
-  const { currentChallenge, challengeProgress, challengeResult, startChallenge, setMode, setParams, setRunning, setSpeed } = useGameStore();
-  const { loadScenario } = usePhysicsStore();
+  const { currentChallenge, challengeProgress, challengeResult, loadError } = useGameStore(
+    useShallow((s) => ({
+      currentChallenge: s.currentChallenge,
+      challengeProgress: s.challengeProgress,
+      challengeResult: s.challengeResult,
+      loadError: s.loadError,
+    })),
+  );
+  const setMode = useGameStore((s) => s.setMode);
+  const setLoadError = useGameStore((s) => s.setLoadError);
+  const dismissChallengeResult = useGameStore((s) => s.dismissChallengeResult);
   const language = useUIStore((s) => s.language);
   const isZh = language === 'zh';
 
   // Briefing state: which challenge is showing its briefing
   const [briefingId, setBriefingId] = useState<number | null>(null);
+  const { pendingKey: launchingId, run, cancel } = useAbortableLoad<number>();
 
-  const launchChallenge = async (id: number) => {
-    const challenge = challenges.find((c) => c.id === id);
-    if (!challenge) return;
-
-    try {
-      const resp = await fetch(`/data/scenarios/${challenge.scenario}.json`);
-      const config = await resp.json();
-      loadScenario(config);
-
-      setParams({
-        T_atm_delta: 0,
-        T_ocean_delta: 0,
-        precip_scale: 1.0,
-        drain_efficiency: 1.0,
-        enable_hydrology: challenge.enable_hydrology,
-        ...challenge.initial_params,
-      });
-
-      startChallenge(id);
-      setRunning(true);
-    } catch (err) {
+  /** Resolves true once the challenge runs; on failure the error shows where the player is. */
+  const startRun = (id: number) =>
+    run(id, (signal) => launchChallenge(id, signal), (err) => {
       console.error('Failed to load challenge scenario:', err);
-    }
-  };
+      setLoadError(CHALLENGE_LOAD_ERROR);
+    });
 
-  const handleStart = (id: number) => {
+  const openBriefing = (id: number) => {
+    setLoadError(null);
     setBriefingId(id);
   };
 
+  const closeBriefing = useCallback(() => {
+    cancel();
+    setLoadError(null);
+    setBriefingId(null);
+  }, [cancel, setLoadError]);
+
   // Show result overlay if challenge just ended
   if (challengeResult) {
-    return <ChallengeResultOverlay result={challengeResult} />;
+    const nextId = challengeResult.won
+      ? nextAvailableChallenge(challengeResult.challengeId, challengeProgress)
+      : null;
+    return (
+      <ChallengeResultOverlay
+        result={challengeResult}
+        nextChallengeId={nextId}
+        isLaunching={launchingId === challengeResult.challengeId}
+        error={loadError}
+        onRetry={() => { void startRun(challengeResult.challengeId); }}
+        onNext={() => {
+          // Same panel instance renders the list next, so the briefing opens there.
+          if (nextId !== null) openBriefing(nextId);
+          dismissChallengeResult();
+        }}
+        onBack={() => {
+          setLoadError(null);
+          dismissChallengeResult();
+        }}
+      />
+    );
   }
 
   // Show briefing before challenge starts
@@ -410,22 +455,24 @@ export default function ChallengePanel() {
     return (
       <ChallengeBriefing
         challengeId={briefingId}
+        isLaunching={launchingId === briefingId}
+        error={loadError}
         onStart={async () => {
-          const id = briefingId;
-          await launchChallenge(id);
-          setBriefingId(null);
+          // On failure stay on the briefing, which shows the error.
+          if (await startRun(briefingId)) setBriefingId(null);
         }}
-        onCancel={() => setBriefingId(null)}
+        onCancel={closeBriefing}
       />
     );
   }
 
   const handleAbandon = () => {
     if (!currentChallenge) return;
-    useGameStore.getState().completeChallenge(currentChallenge, false);
+    const game = useGameStore.getState();
+    game.completeChallenge(currentChallenge, false);
     useGameStore.setState({ currentChallenge: null });
-    setRunning(false);
-    setSpeed('paused');
+    game.setRunning(false);
+    game.setSpeed('paused');
   };
 
   // Active challenge overlay (during gameplay)
@@ -490,6 +537,10 @@ export default function ChallengePanel() {
         {isZh ? '挑战关卡' : 'Challenges'}
       </h2>
 
+      {loadError && (
+        <ErrorNotice message={loadError} onDismiss={() => setLoadError(null)} className="w-full max-w-3xl mb-4" />
+      )}
+
       {/* Progress bar + star count */}
       <div className="w-full max-w-3xl mb-6">
         <div className="flex items-center justify-between mb-1.5">
@@ -528,7 +579,7 @@ export default function ChallengePanel() {
           return (
             <button
               key={challenge.id}
-              onClick={() => !isLocked && handleStart(challenge.id)}
+              onClick={() => !isLocked && openBriefing(challenge.id)}
               disabled={isLocked}
               className="glass-card group text-left p-4 relative overflow-hidden"
               style={{
@@ -590,7 +641,7 @@ export default function ChallengePanel() {
       </div>
 
       <button
-        onClick={() => setMode('menu')}
+        onClick={() => setMode('explorer')}
         className="mt-8 text-sm transition-colors hover:text-[var(--text-secondary)]"
         style={{ color: 'var(--text-muted)' }}
       >

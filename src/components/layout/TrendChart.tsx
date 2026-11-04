@@ -1,13 +1,7 @@
 import type { PhysicsHistoryPoint } from '../../store/physics-store';
 
-const SVG_WIDTH = 360;
-const SVG_HEIGHT = 100;
-const PADDING = {
-  top: 8,
-  right: 12,
-  bottom: 20,
-  left: 44,
-};
+const SVG_WIDTH = 300;
+const SVG_HEIGHT = 80;
 const MAX_DISPLAY_POINTS = 180;
 
 type TrendMetricKey = 'glFluxKm3Yr' | 'massChangeGt';
@@ -101,13 +95,6 @@ export default function TrendChart({
   const values = sampledHistory.map((point) => point[valueKey]);
   const { min, max } = resolveDomain(values, includeZeroBaseline);
 
-  const plotLeft = PADDING.left;
-  const plotRight = SVG_WIDTH - PADDING.right;
-  const plotTop = PADDING.top;
-  const plotBottom = SVG_HEIGHT - PADDING.bottom;
-  const plotWidth = plotRight - plotLeft;
-  const plotHeight = plotBottom - plotTop;
-
   const startYear = sampledHistory[0]?.year ?? 0;
   const endYear = sampledHistory[sampledHistory.length - 1]?.year ?? 0;
   const yearSpan = Math.max(endYear - startYear, 1);
@@ -115,9 +102,9 @@ export default function TrendChart({
 
   const plottedPoints = sampledHistory.map((point) => {
     const x = sampledHistory.length === 1
-      ? plotLeft + plotWidth * 0.5
-      : plotLeft + ((point.year - startYear) / yearSpan) * plotWidth;
-    const y = plotBottom - ((point[valueKey] - min) / valueSpan) * plotHeight;
+      ? SVG_WIDTH * 0.5
+      : ((point.year - startYear) / yearSpan) * SVG_WIDTH;
+    const y = SVG_HEIGHT - ((point[valueKey] - min) / valueSpan) * SVG_HEIGHT;
     return { x, y };
   });
 
@@ -127,152 +114,163 @@ export default function TrendChart({
 
   const areaPath = plottedPoints.length > 0
     ? [
-      `M ${plottedPoints[0].x.toFixed(1)} ${plotBottom.toFixed(1)}`,
+      `M ${plottedPoints[0].x.toFixed(1)} ${SVG_HEIGHT}`,
       ...plottedPoints.map((point) => `L ${point.x.toFixed(1)} ${point.y.toFixed(1)}`),
-      `L ${plottedPoints[plottedPoints.length - 1].x.toFixed(1)} ${plotBottom.toFixed(1)}`,
+      `L ${plottedPoints[plottedPoints.length - 1].x.toFixed(1)} ${SVG_HEIGHT}`,
       'Z',
     ].join(' ')
     : '';
 
   const baselineY = includeZeroBaseline
-    ? plotBottom - ((0 - min) / valueSpan) * plotHeight
+    ? SVG_HEIGHT - ((0 - min) / valueSpan) * SVG_HEIGHT
     : null;
 
   return (
     <section
-      className={`rounded-[var(--radius-md)] border px-3 py-2 flex h-full min-h-0 flex-col ${className}`}
+      className={`rounded-[var(--radius-md)] border p-3 flex h-full min-h-0 flex-col ${className}`}
       style={{
         background: 'var(--bg-card)',
         borderColor: 'var(--border)',
       }}
     >
-      <div className="mb-1 flex items-start justify-between gap-3">
-        <div>
-          <h3
-            className="font-data text-[10px] uppercase tracking-[0.24em]"
+      {/* ─── Header: title + latest value ─── */}
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <h3
+          className="font-data text-[10px] uppercase tracking-[0.24em] leading-tight"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          {title}
+        </h3>
+        <div
+          className="font-data text-sm font-semibold leading-tight shrink-0"
+          style={{ color: accent }}
+        >
+          {formatTrendValue(latestValue, format)}
+          <span
+            className="ml-0.5 text-[10px] font-normal"
             style={{ color: 'var(--text-muted)' }}
           >
-            {title}
-          </h3>
-        </div>
-        <div className="text-right">
-          <div
-            className="font-data text-sm font-semibold"
-            style={{ color: accent }}
-          >
-            {formatTrendValue(latestValue, format)}
-            <span
-              className="ml-1 text-[10px] font-normal"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              {unit}
-            </span>
-          </div>
+            {unit}
+          </span>
         </div>
       </div>
 
-      <svg
-        viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-        className="block w-full flex-1 min-h-[120px]"
-        preserveAspectRatio="none"
-        role="img"
-        aria-labelledby={`${id}-title`}
+      {/* ─── Chart area: Y-labels | SVG | empty ─── */}
+      <div
+        className="flex-1 min-h-0"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'auto 1fr',
+          gridTemplateRows: '1fr auto',
+          gap: '0',
+        }}
       >
-        <title id={`${id}-title`}>{title}</title>
+        {/* Y-axis labels */}
+        <div
+          className="flex flex-col justify-between items-end pr-1.5 py-0.5"
+          style={{ minWidth: '2rem' }}
+        >
+          <span
+            className="font-data text-[9px] leading-none"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {formatTrendValue(max, format)}
+          </span>
+          <span
+            className="font-data text-[9px] leading-none"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {formatTrendValue(min, format)}
+          </span>
+        </div>
 
-        {[0, 0.5, 1].map((offset) => {
-          const y = plotTop + offset * plotHeight;
-          return (
+        {/* SVG chart — only lines and fills, no text */}
+        <svg
+          viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+          className="w-full h-full min-h-[60px]"
+          preserveAspectRatio="none"
+          role="img"
+          aria-labelledby={`${id}-title`}
+        >
+          <title id={`${id}-title`}>{title}</title>
+
+          {[0, 0.5, 1].map((offset) => {
+            const y = offset * SVG_HEIGHT;
+            return (
+              <line
+                key={offset}
+                x1={0}
+                y1={y}
+                x2={SVG_WIDTH}
+                y2={y}
+                stroke="var(--border)"
+                strokeWidth="1"
+                opacity="0.55"
+              />
+            );
+          })}
+
+          {baselineY != null && baselineY >= 0 && baselineY <= SVG_HEIGHT && (
             <line
-              key={offset}
-              x1={plotLeft}
-              y1={y}
-              x2={plotRight}
-              y2={y}
-              stroke="var(--border)"
+              x1={0}
+              y1={baselineY}
+              x2={SVG_WIDTH}
+              y2={baselineY}
+              stroke={accent}
               strokeWidth="1"
-              opacity="0.55"
+              strokeDasharray="4 4"
+              opacity="0.5"
             />
-          );
-        })}
+          )}
 
-        {baselineY != null && baselineY >= plotTop && baselineY <= plotBottom && (
-          <line
-            x1={plotLeft}
-            y1={baselineY}
-            x2={plotRight}
-            y2={baselineY}
-            stroke={accent}
-            strokeWidth="1"
-            strokeDasharray="4 4"
-            opacity="0.5"
-          />
-        )}
+          {areaPath && (
+            <path
+              d={areaPath}
+              fill={accent}
+              opacity="0.12"
+            />
+          )}
 
-        {areaPath && (
-          <path
-            d={areaPath}
-            fill={accent}
-            opacity="0.12"
-          />
-        )}
+          {linePoints && (
+            <polyline
+              points={linePoints}
+              fill="none"
+              stroke={accent}
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
 
-        {linePoints && (
-          <polyline
-            points={linePoints}
-            fill="none"
-            stroke={accent}
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        )}
+          {plottedPoints.length > 0 && (
+            <circle
+              cx={plottedPoints[plottedPoints.length - 1].x}
+              cy={plottedPoints[plottedPoints.length - 1].y}
+              r="3.4"
+              fill={accent}
+            />
+          )}
+        </svg>
 
-        {plottedPoints.length > 0 && (
-          <circle
-            cx={plottedPoints[plottedPoints.length - 1].x}
-            cy={plottedPoints[plottedPoints.length - 1].y}
-            r="3.4"
-            fill={accent}
-          />
-        )}
+        {/* Spacer under Y-axis labels column */}
+        <div />
 
-        <text
-          x={plotLeft - 6}
-          y={plotTop + 4}
-          textAnchor="end"
-          fontSize="9"
-          fill="var(--text-muted)"
-        >
-          {formatTrendValue(max, format)}
-        </text>
-        <text
-          x={plotLeft - 6}
-          y={plotBottom}
-          textAnchor="end"
-          fontSize="9"
-          fill="var(--text-muted)"
-        >
-          {formatTrendValue(min, format)}
-        </text>
-        <text
-          x={plotLeft}
-          y={SVG_HEIGHT - 8}
-          fontSize="9"
-          fill="var(--text-muted)"
-        >
-          {formatYearLabel(startYear)} yr
-        </text>
-        <text
-          x={plotRight}
-          y={SVG_HEIGHT - 8}
-          textAnchor="end"
-          fontSize="9"
-          fill="var(--text-muted)"
-        >
-          {formatYearLabel(endYear)} yr
-        </text>
-      </svg>
+        {/* X-axis labels */}
+        <div className="flex justify-between pt-1">
+          <span
+            className="font-data text-[9px] leading-none"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {formatYearLabel(startYear)} yr
+          </span>
+          <span
+            className="font-data text-[9px] leading-none"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {formatYearLabel(endYear)} yr
+          </span>
+        </div>
+      </div>
     </section>
   );
 }

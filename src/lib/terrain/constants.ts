@@ -57,6 +57,16 @@ export const FOG_NEAR = 80;
 export const FOG_FAR = 240;
 export const DEFAULT_CAMERA_POSITION = [3, 53, 77] as const;
 export const DEFAULT_CAMERA_TARGET = [3.5, -7, 3] as const;
+
+// ── Camera / orbit limits ───────────────────────────────────────────
+// Keep these consistent: geometry must fade fully into the fog (FOG_FAR)
+// before the far plane can clip it, and at the maximum orbit distance the
+// whole continent (half-diagonal ≈ 90.5 units) must stay inside CAMERA_FAR.
+export const CAMERA_FOV = 45;
+export const CAMERA_NEAR = 0.1;
+export const CAMERA_FAR = 260;
+export const ORBIT_MIN_DISTANCE = 0.2;
+export const ORBIT_MAX_DISTANCE = 150;
 export const DEFAULT_AUTO_ROTATE_SPEED = 0.53;
 export const AUTO_ROTATE_IDLE_RESUME_MS = 800;
 export const ICE_SURFACE_RENDER_ORDER = 10;

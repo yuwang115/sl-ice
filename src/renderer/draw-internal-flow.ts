@@ -7,75 +7,43 @@
  */
 
 import { toCanvasX, toCanvasY, type DrawContext } from './draw-bedrock';
-
-// ─── Colormap Utility ──────────────────────────────────────────
-
-/** 5-stop strain rate colormap: indigo → teal → green → yellow → red-orange */
-const COLORMAP_STOPS: readonly [number, number, number, number][] = [
-  [0.0, 26, 26, 94],     // deep indigo
-  [0.25, 45, 106, 142],  // teal
-  [0.5, 77, 166, 77],    // green
-  [0.75, 232, 192, 32],  // warm yellow
-  [1.0, 255, 58, 32],    // red-orange
-];
-
-/** Precomputed 256-entry lookup table for fast colormap access. */
-const COLORMAP_LUT: string[] = buildColormapLUT();
-
-function buildColormapLUT(): string[] {
-  const lut: string[] = [];
-  for (let i = 0; i < 256; i++) {
-    const t = i / 255;
-    lut.push(colormapRGBA(t, 0.75));
-  }
-  return lut;
-}
-
-function colormapRGBA(t: number, alpha: number): string {
-  const clamped = Math.max(0, Math.min(1, t));
-  // Find bounding stops
-  let lo = 0;
-  for (let i = 1; i < COLORMAP_STOPS.length; i++) {
-    if (COLORMAP_STOPS[i][0] >= clamped) { lo = i - 1; break; }
-  }
-  const hi = Math.min(lo + 1, COLORMAP_STOPS.length - 1);
-  const range = COLORMAP_STOPS[hi][0] - COLORMAP_STOPS[lo][0];
-  const f = range > 0 ? (clamped - COLORMAP_STOPS[lo][0]) / range : 0;
-
-  const r = Math.round(COLORMAP_STOPS[lo][1] + f * (COLORMAP_STOPS[hi][1] - COLORMAP_STOPS[lo][1]));
-  const g = Math.round(COLORMAP_STOPS[lo][2] + f * (COLORMAP_STOPS[hi][2] - COLORMAP_STOPS[lo][2]));
-  const b = Math.round(COLORMAP_STOPS[lo][3] + f * (COLORMAP_STOPS[hi][3] - COLORMAP_STOPS[lo][3]));
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+import { createSpawnBudget, frameSteps, REFERENCE_FRAME_S } from './frame-timing';
+import {
+  rasterizeStrainField,
+  STRAIN_COLOR_LUT,
+  STRAIN_MIN_THICKNESS,
+  strainColumnStep,
+  type StrainRaster,
+} from './strain-raster';
 
 // ─── Shared: clip to ice polygon ───────────────────────────────
 
+/**
+ * Clip to the ice body: top edge at ice_base + H, bottom edge at ice_base,
+ * over nodes with at least 5 m of ice. Traced directly (no point arrays).
+ */
 function clipToIceBody(
   ctx: CanvasRenderingContext2D,
   dc: DrawContext,
   H: Float64Array,
-  s: Float64Array,
   ice_base: Float64Array,
   xPositions: Float64Array,
 ): boolean {
-  const surfacePoints: [number, number][] = [];
-  const basePoints: [number, number][] = [];
-
+  let count = 0;
+  ctx.beginPath();
   for (let i = 0; i < H.length; i++) {
     if (H[i] < 5) continue;
-    surfacePoints.push([toCanvasX(xPositions[i], dc), toCanvasY(s[i], dc)]);
-    basePoints.push([toCanvasX(xPositions[i], dc), toCanvasY(ice_base[i], dc)]);
+    const x = toCanvasX(xPositions[i], dc);
+    const y = toCanvasY(ice_base[i] + H[i], dc);
+    if (count === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+    count++;
   }
+  if (count < 2) return false;
 
-  if (surfacePoints.length < 2) return false;
-
-  ctx.beginPath();
-  ctx.moveTo(surfacePoints[0][0], surfacePoints[0][1]);
-  for (let i = 1; i < surfacePoints.length; i++) {
-    ctx.lineTo(surfacePoints[i][0], surfacePoints[i][1]);
-  }
-  for (let i = basePoints.length - 1; i >= 0; i--) {
-    ctx.lineTo(basePoints[i][0], basePoints[i][1]);
+  for (let i = H.length - 1; i >= 0; i--) {
+    if (H[i] < 5) continue;
+    ctx.lineTo(toCanvasX(xPositions[i], dc), toCanvasY(ice_base[i], dc));
   }
   ctx.closePath();
   ctx.clip();
@@ -84,9 +52,56 @@ function clipToIceBody(
 
 // ─── 4A: Strain Rate Heatmap ──────────────────────────────────
 
-const STRAIN_LOG_MIN = -4;  // log10(1e-4 yr^-1)
-const STRAIN_LOG_MAX = -0.5; // log10(~0.3 yr^-1)
-const EPS_MIN_SQ = 1e-20;   // regularization
+/** Reused raster + 1-texel-per-column upload canvas (sizes are fixed per scenario). */
+interface StrainSurface {
+  raster: StrainRaster;
+  image: ImageData;
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+}
+
+let strainSurface: StrainSurface | null = null;
+let legendCanvas: HTMLCanvasElement | null = null;
+
+const LEGEND_W = 12;
+const LEGEND_H = 70;
+
+/** Rasterise the field and upload it into a small canvas; null if canvases are unavailable. */
+function uploadStrainField(
+  u_2d: Float64Array, H: Float64Array, dx: number, nx: number, nz: number, dsigma: number,
+): StrainSurface | null {
+  const raster = rasterizeStrainField({ u2d: u_2d, H, dx, nx, nz, dsigma }, strainSurface?.raster);
+  if (raster.cols === 0 || raster.rows === 0) return null;
+
+  if (!strainSurface || strainSurface.raster !== raster) {
+    const canvas = strainSurface?.canvas ?? document.createElement('canvas');
+    canvas.width = raster.cols;
+    canvas.height = raster.rows;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    strainSurface = { raster, image: new ImageData(raster.data, raster.cols, raster.rows), canvas, ctx };
+  }
+  strainSurface.ctx.putImageData(strainSurface.image, 0, 0);
+  return strainSurface;
+}
+
+/** One 1-px column per LUT step, built once. */
+function getLegendCanvas(): HTMLCanvasElement | null {
+  if (legendCanvas) return legendCanvas;
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = LEGEND_H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const image = ctx.createImageData(1, LEGEND_H);
+  for (let p = 0; p < LEGEND_H; p++) {
+    const idx = Math.max(0, Math.min(255, Math.round((1 - p / LEGEND_H) * 255)));
+    image.data.set(STRAIN_COLOR_LUT.subarray(idx * 4, idx * 4 + 4), p * 4);
+  }
+  ctx.putImageData(image, 0, 0);
+  legendCanvas = canvas;
+  return canvas;
+}
 
 export function drawStrainRateHeatmap(
   dc: DrawContext,
@@ -102,48 +117,27 @@ export function drawStrainRateHeatmap(
   const dx = xPositions[1] - xPositions[0];
 
   ctx.save();
-  if (!clipToIceBody(ctx, dc, H, new Float64Array(H.length).map((_, i) => ice_base[i] + H[i]), ice_base, xPositions)) {
+  if (!clipToIceBody(ctx, dc, H, ice_base, xPositions)) {
     ctx.restore();
     return;
   }
 
-  // Subsample for performance: skip columns if grid is large
-  const xStep = nx > 300 ? 2 : 1;
-  const jStep = nz > 15 ? 2 : 1;
+  const surface = uploadStrainField(u_2d, H, dx, nx, nz, dsigma);
+  if (surface) {
+    const { raster, canvas } = surface;
+    const xStep = strainColumnStep(nx);
+    const sigmaTop = Math.min(1, raster.rows * dsigma);
+    ctx.imageSmoothingEnabled = false;
 
-  for (let i = 1; i < nx - 1; i += xStep) {
-    if (H[i] < 10) continue;
-
-    const x0 = toCanvasX(xPositions[i], dc);
-    const x1 = toCanvasX(xPositions[Math.min(i + xStep, nx - 1)], dc);
-
-    for (let j = 0; j < nz - 1; j += jStep) {
-      // Strain rate: du/dx and du/dz
-      const dudx = (u_2d[(i + 1) * nz + j] - u_2d[(i - 1) * nz + j]) / (2 * dx);
-
-      const jUp = Math.min(j + 1, nz - 1);
-      const jDn = Math.max(j - 1, 0);
-      const dudsigma = (u_2d[i * nz + jUp] - u_2d[i * nz + jDn]) / ((jUp - jDn) * dsigma);
-      const dudz = dudsigma / Math.max(H[i], 1);
-
-      const epsEff = Math.sqrt(dudx * dudx + 0.25 * dudz * dudz + EPS_MIN_SQ);
-      const logEps = Math.log10(epsEff);
-
-      // Map to [0, 1] for colormap
-      const t = (logEps - STRAIN_LOG_MIN) / (STRAIN_LOG_MAX - STRAIN_LOG_MIN);
-      const idx = Math.max(0, Math.min(255, Math.round(t * 255)));
-
-      // Quad corners in physical space → canvas
-      const sigma0 = j * dsigma;
-      const sigma1 = Math.min((j + jStep) * dsigma, 1);
-      const z0 = ice_base[i] + sigma0 * H[i];
-      const z1 = ice_base[i] + sigma1 * H[i];
-
-      const y0 = toCanvasY(z1, dc); // top (higher z → lower canvas y)
-      const y1 = toCanvasY(z0, dc); // bottom
-
-      ctx.fillStyle = COLORMAP_LUT[idx];
-      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    // Stretch each column strip over its ice column (sigma 0 → 1).
+    for (let c = 0; c < raster.cols; c++) {
+      const i = raster.nodeIndex[c];
+      if (H[i] < STRAIN_MIN_THICKNESS) continue;
+      const x0 = toCanvasX(xPositions[i], dc);
+      const x1 = toCanvasX(xPositions[Math.min(i + xStep, nx - 1)], dc);
+      const yTop = toCanvasY(ice_base[i] + sigmaTop * H[i], dc);
+      const yBottom = toCanvasY(ice_base[i], dc);
+      ctx.drawImage(canvas, c, 0, 1, raster.rows, x0, yTop, x1 - x0, yBottom - yTop);
     }
   }
 
@@ -152,14 +146,13 @@ export function drawStrainRateHeatmap(
   ctx.save();
   const legendX = dc.width - 120;
   const legendY = dc.height - 100;
-  const legendW = 12;
-  const legendH = 70;
+  const legendW = LEGEND_W;
+  const legendH = LEGEND_H;
 
-  for (let p = 0; p < legendH; p++) {
-    const t = 1 - p / legendH;
-    const idx = Math.max(0, Math.min(255, Math.round(t * 255)));
-    ctx.fillStyle = COLORMAP_LUT[idx];
-    ctx.fillRect(legendX, legendY + p, legendW, 1);
+  const legend = getLegendCanvas();
+  if (legend) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(legend, legendX, legendY, legendW, legendH);
   }
 
   ctx.strokeStyle = 'rgba(255,255,255,0.3)';
@@ -312,9 +305,7 @@ export function drawIsochrones(
 
   ctx.save();
   // Clip to ice body
-  const sArr = new Float64Array(H.length);
-  for (let i = 0; i < H.length; i++) sArr[i] = ice_base[i] + H[i];
-  clipToIceBody(ctx, dc, H, sArr, ice_base, xPositions);
+  clipToIceBody(ctx, dc, H, ice_base, xPositions);
 
   for (let k = 0; k < numLines; k++) {
     const i = iceIndices[k * lineStep];
@@ -375,14 +366,41 @@ interface TracerParticle {
 
 const MAX_TRACERS = 300;
 let tracers: TracerParticle[] = [];
+const tracerSpawns = createSpawnBudget();
+let tracerSpawnCursor = 0;
 
 /** Reset tracer state (call on cleanup / scenario switch). */
 export function resetTracerParticles(): void {
   tracers = [];
+  tracerSpawns.clear();
+  tracerSpawnCursor = 0;
 }
 
-/** Display timestep per animation frame (years). */
+/** Display timestep per 60 Hz animation frame (years). */
 const TRACER_DT = 2.0;
+/** Spawn attempts per 60 Hz frame, cycling through the source positions. */
+const TRACER_SPAWNS_PER_FRAME = 4;
+const TRACER_SPAWN_POSITIONS = [0.1, 0.3, 0.5, 0.7] as const;
+
+function spawnTracers(H: Float64Array, xPositions: Float64Array, nx: number, steps: number): void {
+  const due = tracerSpawns.take(TRACER_SPAWNS_PER_FRAME, steps);
+  for (let n = 0; n < due && tracers.length < MAX_TRACERS; n++) {
+    const frac = TRACER_SPAWN_POSITIONS[tracerSpawnCursor++ % TRACER_SPAWN_POSITIONS.length];
+    const idx = Math.floor(frac * (nx - 1));
+    if (H[idx] < 20) continue;
+
+    const sigma = Math.random();
+    tracers.push({
+      x: xPositions[idx],
+      sigma,
+      life: 0,
+      maxLife: 200 + Math.random() * 300,
+      prevX: xPositions[idx],
+      prevSigma: sigma,
+    });
+  }
+  if (tracers.length >= MAX_TRACERS) tracerSpawns.clear();
+}
 
 export function drawTracerParticles(
   dc: DrawContext,
@@ -394,35 +412,20 @@ export function drawTracerParticles(
   nx: number,
   nz: number,
   dsigma: number,
+  dt: number = REFERENCE_FRAME_S,
 ): void {
   const { ctx } = dc;
   const dx = xPositions[1] - xPositions[0];
   const domainMax = xPositions[nx - 1];
+  const steps = frameSteps(dt);
 
   // ── Spawn new particles at 4 source positions ──
-  const spawnPerFrame = 4;
-  const spawnPositions = [0.1, 0.3, 0.5, 0.7];
-
-  for (let s = 0; s < spawnPerFrame && tracers.length < MAX_TRACERS; s++) {
-    const frac = spawnPositions[s % spawnPositions.length];
-    const idx = Math.floor(frac * (nx - 1));
-    if (H[idx] < 20) continue;
-
-    tracers.push({
-      x: xPositions[idx],
-      sigma: Math.random(),
-      life: 0,
-      maxLife: 200 + Math.random() * 300,
-      prevX: xPositions[idx],
-      prevSigma: Math.random(),
-    });
-  }
+  spawnTracers(H, xPositions, nx, steps);
 
   // ── Advect particles ──
   const alive: TracerParticle[] = [];
 
   for (const p of tracers) {
-    p.prevX = p.x;
     p.prevSigma = p.sigma;
 
     // Find grid cell
@@ -442,9 +445,10 @@ export function drawTracerParticles(
     const uLocal = u00 * (1 - fx) * (1 - fy) + u10 * fx * (1 - fy) +
                    u01 * (1 - fx) * fy + u11 * fx * fy;
 
-    // Advect
-    p.x += uLocal * TRACER_DT;
-    p.life += 1;
+    // Advect; the tail always spans one 60 Hz step so its length is refresh-rate independent
+    p.x += uLocal * TRACER_DT * steps;
+    p.prevX = p.x - uLocal * TRACER_DT;
+    p.life += steps;
 
     // Check if still in domain
     const iNew = Math.floor(p.x / dx);

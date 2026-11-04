@@ -27,7 +27,7 @@ function Stars({ count, max = 5 }: { count: number; max?: number }) {
 
 export function ChallengeShowcase({ lang }: ChallengeShowcaseProps) {
   return (
-    <section className="landing-section">
+    <section id="challenges" className="landing-section">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12 scroll-reveal">
           <h2

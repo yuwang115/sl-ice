@@ -9,6 +9,7 @@
  */
 
 import { toCanvasX, toCanvasY, type DrawContext } from '../draw-bedrock';
+import { frameSteps, REFERENCE_FRAME_S } from '../frame-timing';
 
 // ── Iceberg ────────────────────────────────────────────────────
 
@@ -112,7 +113,8 @@ export function triggerCalving(
 
 // ── Update helpers ─────────────────────────────────────────────
 
-const DT = 0.016; // ~60fps frame time
+/** Per-60 Hz-frame time step the motion was tuned with; scaled by frame steps. */
+const DT = 0.016;
 const GRAVITY = -600; // domain m/s² (visual, not physical)
 
 function spawnSplash(berg: Iceberg): void {
@@ -174,51 +176,67 @@ function drawIcebergShape(
   ctx.restore();
 }
 
+/** Advance one iceberg by `steps` 60 Hz frames. */
+function updateIceberg(berg: Iceberg, steps: number): void {
+  const dt = DT * steps;
+  berg.life += steps;
+
+  if (berg.phase === 'detach') {
+    // Falling phase: gravity + drift
+    berg.x += berg.vx * dt;
+    berg.vz += GRAVITY * dt;
+    berg.z += berg.vz * dt;
+    berg.rotation += berg.rotSpeed * steps;
+
+    // Transition to drift when hitting sea level
+    if (berg.z <= 0) {
+      berg.z = 0;
+      berg.vz = 0;
+      berg.phase = 'drift';
+      // Dampen rotation for floating stability
+      berg.rotSpeed *= 0.15;
+      spawnSplash(berg);
+    }
+    return;
+  }
+
+  // Drift phase: float at sea level with bobbing
+  berg.x += berg.driftSpeed * dt;
+  berg.z = Math.sin(Date.now() * 0.003 + berg.bobPhase) * berg.bobAmp;
+
+  // Gentle rotation wobble
+  berg.rotation += berg.rotSpeed * steps;
+  berg.rotSpeed *= Math.pow(0.995, steps); // slow damping
+  berg.rotSpeed += Math.sin(Date.now() * 0.002 + berg.bobPhase) * 0.0005 * steps;
+
+  // Melt: shrink over time (faster in second half of life)
+  const lifeFrac = berg.life / berg.maxLife;
+  const meltFactor = Math.pow(lifeFrac > 0.5 ? 0.997 : 0.999, steps);
+  berg.width *= meltFactor;
+  berg.height *= meltFactor;
+}
+
+function updateSplash(sp: Splash, steps: number): void {
+  const dt = DT * steps;
+  sp.x += sp.vx * dt;
+  sp.vz -= 400 * dt; // gravity on spray
+  sp.z += sp.vz * dt;
+  sp.life += steps;
+}
+
 /**
- * Update and draw all icebergs and splashes.
+ * Update and draw all icebergs and splashes. `dt` is the frame time in seconds.
  */
-export function drawCalving(dc: DrawContext): void {
+export function drawCalving(dc: DrawContext, dt: number = REFERENCE_FRAME_S): void {
   const { ctx } = dc;
   const seaY = toCanvasY(0, dc);
+  const steps = frameSteps(dt);
 
   // ── Update icebergs ──
   const aliveIcebergs: Iceberg[] = [];
 
   for (const berg of icebergs) {
-    berg.life++;
-
-    if (berg.phase === 'detach') {
-      // Falling phase: gravity + drift
-      berg.x += berg.vx * DT;
-      berg.vz += GRAVITY * DT;
-      berg.z += berg.vz * DT;
-      berg.rotation += berg.rotSpeed;
-
-      // Transition to drift when hitting sea level
-      if (berg.z <= 0) {
-        berg.z = 0;
-        berg.vz = 0;
-        berg.phase = 'drift';
-        // Dampen rotation for floating stability
-        berg.rotSpeed *= 0.15;
-        spawnSplash(berg);
-      }
-    } else {
-      // Drift phase: float at sea level with bobbing
-      berg.x += berg.driftSpeed * DT;
-      berg.z = Math.sin(Date.now() * 0.003 + berg.bobPhase) * berg.bobAmp;
-
-      // Gentle rotation wobble
-      berg.rotation += berg.rotSpeed;
-      berg.rotSpeed *= 0.995; // slow damping
-      berg.rotSpeed += Math.sin(Date.now() * 0.002 + berg.bobPhase) * 0.0005;
-
-      // Melt: shrink over time (faster in second half of life)
-      const lifeFrac = berg.life / berg.maxLife;
-      const meltFactor = lifeFrac > 0.5 ? 0.997 : 0.999;
-      berg.width *= meltFactor;
-      berg.height *= meltFactor;
-    }
+    updateIceberg(berg, steps);
 
     // Cull if too old, too small, or drifted off-screen
     const cx = toCanvasX(berg.x, dc);
@@ -235,11 +253,7 @@ export function drawCalving(dc: DrawContext): void {
   const aliveSplashes: Splash[] = [];
 
   for (const sp of splashes) {
-    sp.x += sp.vx * DT;
-    sp.vz -= 400 * DT; // gravity on spray
-    sp.z += sp.vz * DT;
-    sp.life++;
-
+    updateSplash(sp, steps);
     if (sp.life > sp.maxLife || sp.z < -50) continue;
     aliveSplashes.push(sp);
   }

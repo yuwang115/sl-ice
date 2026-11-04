@@ -2,6 +2,8 @@
  * Velocity heatmap overlay mesh.
  * Matches the original 3D-ICE explorer by preferring continuous shader sampling
  * from the raw velocity field, with vertex colors as a fallback.
+ * The texture texels are packed by the geometry worker; the mesh stays mounted
+ * while hidden so toggling the layer never recompiles the shader.
  */
 
 import { useEffect, useMemo } from 'react';
@@ -16,10 +18,11 @@ import { VELOCITY_SURFACE_OPACITY } from '../../lib/terrain/constants';
 
 export default function VelocityOverlay() {
   const gl = useThree((state) => state.gl);
-  const velocityArrays = useExplorerStore((s) => s.velocityArrays);
+  const velocityArrays = useExplorerStore((s) => s.terrain?.velocity);
+  const grid = useExplorerStore((s) => s.terrain?.grid);
   const showVelocity = useExplorerStore((s) => s.showVelocity);
-  const gridNx = useExplorerStore((s) => s.gridNx);
-  const gridNy = useExplorerStore((s) => s.gridNy);
+  const nx = grid?.nx ?? 0;
+  const ny = grid?.ny ?? 0;
 
   const renderData = useMemo(() => {
     if (!velocityArrays) return null;
@@ -30,13 +33,12 @@ export default function VelocityOverlay() {
     geo.setIndex(new THREE.BufferAttribute(velocityArrays.indices, 1));
     geo.setAttribute('color', new THREE.BufferAttribute(velocityArrays.colors, 3, true));
 
-    const texture =
-      gridNx > 0 && gridNy > 0
-        ? createVelocityDataTexture(velocityArrays, gridNx, gridNy, gl)
-        : null;
+    const texture = nx > 0 && ny > 0
+      ? createVelocityDataTexture(velocityArrays, nx, ny, gl)
+      : null;
 
     const material = texture
-      ? createVelocitySurfaceShaderMaterial(texture, gridNx, gridNy)
+      ? createVelocitySurfaceShaderMaterial(texture, nx, ny)
       : new THREE.MeshBasicMaterial({
         vertexColors: true,
         transparent: true,
@@ -49,7 +51,7 @@ export default function VelocityOverlay() {
       });
 
     return { geometry: geo, material, texture };
-  }, [gl, gridNx, gridNy, velocityArrays]);
+  }, [gl, nx, ny, velocityArrays]);
 
   useEffect(() => () => {
     renderData?.geometry.dispose();
@@ -57,13 +59,14 @@ export default function VelocityOverlay() {
     renderData?.texture?.dispose();
   }, [renderData]);
 
-  if (!renderData || !showVelocity) return null;
+  if (!renderData) return null;
 
   return (
     <mesh
       geometry={renderData.geometry}
       material={renderData.material}
       renderOrder={12}
+      visible={showVelocity}
     />
   );
 }

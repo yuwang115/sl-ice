@@ -32,11 +32,15 @@ import {
   RHO_ICE, RHO_FRESH, G,
   K_WATER, K_HYDRAULIC,
   WATER_LAYER_THICKNESS_SCALE,
-  L_FUSION, Q_GEOTHERMAL, C_SLIDING, SLIDING_M,
+  L_FUSION, Q_GEOTHERMAL, C_SLIDING, SEC_PER_YEAR,
   SURFACE_TO_BED_FRACTION,
 } from './constants';
+import { basalDragCoefficient } from './friction';
 import { clamp } from './matrix/utils';
 import type { ModelGrid, UserParams } from './types';
+
+/** Upper bound on basal shear stress used for frictional heating (Pa). */
+const TAU_B_HEATING_MAX = 2e5;
 
 /**
  * Compute basal melt production from geothermal and frictional heating.
@@ -45,24 +49,24 @@ import type { ModelGrid, UserParams } from './types';
  *
  * @param u_base Basal velocity (m/yr)
  * @param N_eff Effective pressure (Pa)
+ * @param H Ice thickness (m)
+ * @param C_local Weertman coefficient (Pa (m/yr)^(-1/3))
  * @returns Basal melt production (m/yr water equivalent)
  */
 function basalMeltProductionWaterEq(
   u_base: number,
   N_eff: number,
+  H: number,
   C_local: number = C_SLIDING,
 ): number {
-  // Frictional heating: τ_b * u_b
+  // Frictional heating: τ_b * u_b, with τ_b from the same law the momentum
+  // solver uses (capped as a safety net for transient Picard states).
   const u_b = Math.abs(u_base);
-  const beta = C_local * Math.pow(u_b + 1e-6, SLIDING_M - 1) * Math.max(N_eff, 0);
-  // The sliding-law coefficient is tuned for the momentum solver rather than
-  // direct stress diagnostics, so cap basal shear stress to a realistic range
-  // before converting it to frictional heat.
-  const tau_b = Math.min(beta * u_b, 2e5); // Pa
+  const beta = basalDragCoefficient(C_local, u_b, N_eff, H);
+  const tau_b = Math.min(beta * u_b, TAU_B_HEATING_MAX); // Pa
   const frictionalHeat = tau_b * u_b; // J/(m²·yr) = Pa · m/yr
 
   // Convert geothermal heat from W/m² to J/(m²·yr)
-  const SEC_PER_YEAR = 365.25 * 24 * 3600;
   const Q_geo_yearly = Q_GEOTHERMAL * SEC_PER_YEAR; // J/(m²·yr)
 
   // Total heat in J/(m²·yr)
@@ -93,7 +97,7 @@ export function computeGroundedBasalMelt(
     if (is_floating[i] || H[i] < 10) continue;
 
     const C_i = C_basal ? C_basal[i] : C_SLIDING;
-    const meltWaterEq = basalMeltProductionWaterEq(u_base[i], N_eff[i], C_i);
+    const meltWaterEq = basalMeltProductionWaterEq(u_base[i], N_eff[i], H[i], C_i);
     waterEq[i] = meltWaterEq;
     iceEq[i] = meltWaterEq * (RHO_FRESH / RHO_ICE);
   }

@@ -81,17 +81,59 @@ export default function FlowlineListPanel({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // Auto-expand and scroll to selected flowline (from 3D scene click)
+  // Auto-expand and scroll to selected flowline (from 3D scene click).
+  //
+  // We can't call scrollIntoView synchronously after setExpandedId: React
+  // hasn't committed the expansion render yet, so the browser would measure
+  // the still-collapsed (short) card and leave the Start Simulation button
+  // below the visible viewport once the card expands.
+  //
+  // Wait two requestAnimationFrame ticks (the canonical "land after the next
+  // React flush" pattern), then run a custom scroll that bottom-aligns
+  // cards taller than the container so Start Simulation stays visible.
   useEffect(() => {
-    if (selectedFlowlineId) {
-      // Keep the panel expansion in sync with scene-driven selection.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setExpandedId(selectedFlowlineId);
-      const el = rowRefs.current[selectedFlowlineId];
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    }
+    if (!selectedFlowlineId) return;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setExpandedId(selectedFlowlineId);
+
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(() => {
+        const el = rowRefs.current[selectedFlowlineId];
+        if (!el) return;
+
+        const container = el.closest<HTMLElement>('[class*="overflow-y-auto"]');
+        if (!container) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          return;
+        }
+
+        const cardRect = el.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        const cardOffset = (cardRect.top - containerRect.top) + container.scrollTop;
+        const pad = 12;
+
+        let targetScroll: number;
+        if (cardRect.height + pad * 2 <= containerRect.height) {
+          // Card fits — align near the top with breathing room above
+          targetScroll = cardOffset - pad;
+        } else {
+          // Card taller than container — bottom-align so Start Simulation is visible
+          targetScroll = cardOffset + cardRect.height - containerRect.height + pad;
+        }
+
+        container.scrollTo({
+          top: Math.max(0, targetScroll),
+          behavior: 'smooth',
+        });
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      if (innerRaf) cancelAnimationFrame(innerRaf);
+    };
   }, [selectedFlowlineId]);
 
   const filtered = useMemo(() => {

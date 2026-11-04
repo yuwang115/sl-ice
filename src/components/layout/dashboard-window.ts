@@ -85,16 +85,20 @@ export function applyDashboardMove(
   deltaY: number,
   boundsWidth: number,
   boundsHeight: number,
+  actualHeight?: number,
 ): FloatingDashboardRect {
-  return clampDashboardRect(
-    {
-      ...rect,
-      x: rect.x + deltaX,
-      y: rect.y + deltaY,
-    },
-    boundsWidth,
-    boundsHeight,
-  );
+  const effectiveHeight = actualHeight ?? rect.height;
+  const newX = rect.x + deltaX;
+  const newY = rect.y + deltaY;
+
+  const maxX = Math.max(DASHBOARD_WINDOW_MARGIN, boundsWidth - rect.width - DASHBOARD_WINDOW_MARGIN);
+  const maxY = Math.max(DASHBOARD_WINDOW_MARGIN, boundsHeight - effectiveHeight - DASHBOARD_WINDOW_MARGIN);
+
+  return {
+    ...rect,
+    x: clamp(newX, DASHBOARD_WINDOW_MARGIN, maxX),
+    y: clamp(newY, DASHBOARD_WINDOW_MARGIN, maxY),
+  };
 }
 
 export function applyDashboardResize(

@@ -3,7 +3,7 @@
  * Pauses simulation, asks a multiple-choice question, shows explanation.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useId, useRef } from 'react';
 import { useGameStore } from '../../store/game-store';
 import { usePhysicsStore } from '../../store/physics-store';
 import { useUIStore } from '../../store/ui-store';
@@ -21,6 +21,7 @@ export default function QuizPopup() {
   const [showExplanation, setShowExplanation] = useState(false);
   const answeredRef = useRef<Set<string>>(new Set());
   const wasRunningRef = useRef(false);
+  const titleId = useId();
 
   // Watch for triggering events
   useEffect(() => {
@@ -61,6 +62,16 @@ export default function QuizPopup() {
     }
   }, [setRunning]);
 
+  // Esc closes the quiz, like the Continue button
+  useEffect(() => {
+    if (!activeQuiz) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleDismiss();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeQuiz, handleDismiss]);
+
   if (!activeQuiz) return null;
 
   const correctIndex = activeQuiz.options.findIndex((o) => o.correct);
@@ -72,6 +83,9 @@ export default function QuizPopup() {
       style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className="glass-panel rounded-2xl p-6 max-w-lg w-full mx-4"
         style={{ animation: 'ghibli-fade-in 0.3s ease-out' }}
       >
@@ -87,7 +101,7 @@ export default function QuizPopup() {
         </div>
 
         {/* Question */}
-        <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
+        <h3 id={titleId} className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
           {isZh ? activeQuiz.question_zh : activeQuiz.question_en}
         </h3>
 

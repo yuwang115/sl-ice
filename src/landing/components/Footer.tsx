@@ -15,7 +15,7 @@ export function Footer({ lang, theme, onToggleTheme, onToggleLang }: FooterProps
       }}
     >
       <p className="text-xs font-data text-center sm:text-left">
-        SL-ICE &mdash; Stream-Line Interactive Cryosphere Explorer
+        SL-ICE &mdash; Streamline Lab Interactive Cryosphere Explorer
       </p>
 
       <div className="flex items-center gap-3">

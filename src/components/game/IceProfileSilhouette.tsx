@@ -28,17 +28,6 @@ function buildSvgPath(points: readonly Point[]): string {
   return d;
 }
 
-// ── Grid params (fixed for 480 dataset) ─────────────────────────────
-
-const GRID_PARAMS = {
-  x0_m: -3_333_000,
-  y0_m: 3_333_000,
-  dx_m: 10_000,
-  dy_m: -10_000,
-  nx: 0,
-  ny: 0,
-} as const;
-
 // ── Component ───────────────────────────────────────────────────────
 
 export default function IceProfileSilhouette({
@@ -46,25 +35,22 @@ export default function IceProfileSilhouette({
   width = 280,
   height = 100,
 }: IceProfileSilhouetteProps) {
-  const surfaceHeights = useExplorerStore((s) => s.surfaceHeights);
-  const bedHeights = useExplorerStore((s) => s.bedHeights);
-  const thicknessData = useExplorerStore((s) => s.thicknessData);
-  const gridNx = useExplorerStore((s) => s.gridNx);
-  const gridNy = useExplorerStore((s) => s.gridNy);
+  // Grid metadata comes from the loaded BedMachine meta (see terrain-build).
+  const terrain = useExplorerStore((s) => s.terrain);
 
   const samples = useMemo<ProfileSample[] | null>(() => {
-    if (!surfaceHeights || !bedHeights || !thicknessData || gridNx === 0) return null;
-    const grid = { ...GRID_PARAMS, nx: gridNx, ny: gridNy };
+    if (!terrain) return null;
+    const { grid } = terrain;
     return sampleFlowlineProfile(
       flowline.path_lonlat,
       grid,
-      surfaceHeights,
-      bedHeights,
-      thicknessData,
-      gridNx,
-      gridNy,
+      terrain.surfaceHeights,
+      terrain.bedHeights,
+      terrain.thicknessData,
+      grid.nx,
+      grid.ny,
     );
-  }, [flowline.path_lonlat, surfaceHeights, bedHeights, thicknessData, gridNx, gridNy]);
+  }, [flowline.path_lonlat, terrain]);
 
   if (!samples || samples.length < 2) return null;
 

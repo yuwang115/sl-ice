@@ -20,12 +20,12 @@ export const narratives: ChallengeBriefingText[] = [
 
 Snowfall adds mass inland. Ocean melting removes mass at the edges. When these forces match, the ice sheet is in equilibrium — alive, flowing, but stable.
 
-Your mission: maintain this balance for 500 years.`,
+But the ocean around your ice sheet has already warmed by 1.5°C. Your mission: restore the balance and hold the ice volume steady for 500 years.`,
     briefing_zh: `2040年。你被任命为一个偏远南极研究站的首席科学家。你的第一个任务：理解冰盖如何保持平衡。
 
 内陆降雪增加质量，边缘海洋融化消耗质量。当这些力量匹配时，冰盖处于平衡状态——活跃、流动，但稳定。
 
-你的任务：维持这种平衡500年。`,
+但你的冰盖周围的海洋已经升温1.5°C。你的任务：恢复平衡，让冰量稳定500年。`,
     debrief_en: `What you just experienced is the fundamental principle of ice sheet mass balance — the same balance that governs all of Earth's ice sheets today.
 
 Currently, both the Antarctic and Greenland ice sheets are losing mass faster than they gain it, contributing to accelerating sea level rise. The equilibrium you maintained in this simulation is what glaciologists are working to understand and protect.`,
@@ -39,12 +39,12 @@ Currently, both the Antarctic and Greenland ice sheets are losing mass faster th
 
 If the grounding line retreats past this slope, a self-reinforcing feedback begins — retreat exposes deeper bedrock, allowing more ice to float, accelerating further retreat.
 
-Scientists call this Marine Ice Sheet Instability. Your mission: prevent it for 1000 years.`,
+The ocean has already warmed by 3°C, and the grounding line is on the move. Scientists call this Marine Ice Sheet Instability. Your mission: prevent it for 1000 years.`,
     briefing_zh: `你的卫星数据揭示了令人不安的信息：冰下基岩向内陆方向倾斜。这种"逆坡"创造了一个隐藏的脆弱点。
 
 如果接地线退过这个斜坡，自强化反馈就会开始——退缩暴露更深的基岩，使更多冰漂浮，加速进一步退缩。
 
-科学家称之为海洋冰盖不稳定性。你的任务：阻止它1000年。`,
+海洋已经升温3°C，接地线正在移动。科学家称之为海洋冰盖不稳定性。你的任务：阻止它1000年。`,
     debrief_en: `Marine Ice Sheet Instability (MISI) is the single biggest concern for West Antarctic ice loss. The Thwaites Glacier — nicknamed the "Doomsday Glacier" — sits on exactly this kind of retrograde bedrock.
 
 Scientists at the International Thwaites Glacier Collaboration are racing to determine whether MISI has already begun. If it has, the resulting sea level rise could be unstoppable.`,
@@ -56,12 +56,12 @@ Scientists at the International Thwaites Glacier Collaboration are racing to det
     challengeId: 3,
     briefing_en: `The ice shelf floating at the edge of your ice sheet is thin, fragile, and utterly essential. It acts like a cork in a bottle, bracing the vast ice behind it.
 
-Warm ocean currents are eating it from below. If the shelf collapses, the ice sheet will surge into the ocean.
+Warm ocean currents, already 3°C warmer than normal, are eating it from below. The thinner the shelf, the faster the ice behind it surges into the ocean.
 
 You have only one control: ocean temperature. Guard the cork.`,
     briefing_zh: `漂浮在冰盖边缘的冰架薄而脆弱，却至关重要。它像瓶中的瓶塞一样，支撑着身后巨大的冰体。
 
-暖洋流正在从下方侵蚀它。如果冰架崩塌，冰盖将涌入海洋。
+已比正常温暖3°C的暖洋流正在从下方侵蚀它。冰架越薄，身后的冰涌入海洋就越快。
 
 你只有一个控制手段：海洋温度。守住瓶塞。`,
     debrief_en: `Ice shelf buttressing is a critical concept in glaciology. The collapse of the Larsen B ice shelf in 2002 caused the glaciers behind it to accelerate by up to 8x.
@@ -77,12 +77,12 @@ Today, scientists are closely monitoring the Thwaites Ice Shelf, which buttresse
 
 When drainage is inefficient, water pressure builds. Higher pressure means less friction, faster sliding, more frictional heat, more meltwater — a dangerous positive feedback loop.
 
-Control the drainage. Tame the undercurrents.`,
+Right now, the drainage system is clogged. Control the drainage. Tame the undercurrents.`,
     briefing_zh: `冰层之下，隐藏的河流系统将融水输送向海洋。这些水润滑冰-基岩界面，控制着冰的滑动速度。
 
 当排水效率低时，水压升高。更高的水压意味着更少的摩擦、更快的滑动、更多的摩擦热、更多的融水——一个危险的正反馈循环。
 
-控制排水。驯服暗流。`,
+此刻，排水系统已被堵塞。控制排水。驯服暗流。`,
     debrief_en: `Subglacial hydrology is one of the least understood aspects of ice sheet dynamics, yet it may be one of the most important. Surface melt on the Greenland ice sheet drains to the bed through moulins, temporarily speeding up glacier flow every summer.
 
 In Antarctica, vast subglacial lakes and rivers move water hundreds of kilometers under the ice, influencing glacier behavior in ways scientists are only beginning to understand.`,
@@ -92,12 +92,12 @@ In Antarctica, vast subglacial lakes and rivers move water hundreds of kilometer
   },
   {
     challengeId: 5,
-    briefing_en: `The worst-case scenario. The ice sheet is already on the edge — atmospheric warming of +3°C, ocean warming of +1.5°C. MISI is lurking just beyond the grounding line.
+    briefing_en: `The worst-case scenario. The ice sheet is already on the edge — atmospheric warming of +3°C, ocean warming of +4°C. MISI is lurking just beyond the grounding line.
 
 Most glaciologists believe that from this state, recovery is nearly impossible. Prove them wrong.
 
 Warning: most players fail this challenge. And that's the point.`,
-    briefing_zh: `最坏情况。冰盖已经处于边缘——大气升温+3°C，海洋升温+1.5°C。MISI正潜伏在接地线之外。
+    briefing_zh: `最坏情况。冰盖已经处于边缘——大气升温+3°C，海洋升温+4°C。MISI正潜伏在接地线之外。
 
 大多数冰川学家认为，从这个状态恢复几乎不可能。证明他们错了。
 
@@ -113,12 +113,12 @@ If you failed: you experienced hysteresis firsthand. Some climate tipping points
     challengeId: 6,
     briefing_en: `A radical idea: build a barrier on the seafloor to block warm ocean currents from reaching the grounding line. It sounds like science fiction, but real scientists are studying this.
 
-The ocean is +2°C warmer than normal. Place your barrier strategically and calibrate its efficiency. Can you buy the ice sheet 500 years?
+The ocean is +3.5°C warmer than normal. Place your barrier strategically and calibrate its efficiency. Can you buy the ice sheet 500 years?
 
 Remember: geoengineering treats symptoms, not causes.`,
     briefing_zh: `一个激进的想法：在海底建造屏障，阻挡暖洋流到达接地线。这听起来像科幻小说，但真正的科学家正在研究这个。
 
-海洋比正常温暖+2°C。战略性地放置你的屏障并调整其效率。你能为冰盖争取500年吗？
+海洋比正常温暖+3.5°C。战略性地放置你的屏障并调整其效率。你能为冰盖争取500年吗？
 
 记住：地球工程治标不治本。`,
     debrief_en: `Seafloor barriers to protect glaciers from warm water are a real proposal, most notably studied for the Thwaites Glacier. The concept involves placing artificial sills on the seabed to redirect warm Circumpolar Deep Water away from vulnerable ice.
@@ -130,20 +130,20 @@ Scientists emphasize this would be a temporary measure — a way to buy time whi
   },
   {
     challengeId: 7,
-    briefing_en: `Two simulations. Identical parameters. One tiny difference: 0.01°C.
+    briefing_en: `Two simulations. Identical parameters. One tiny difference: 0.1°C of ocean warming.
 
-Watch them diverge over 2000 years. This is not a challenge you can win or lose — it's a lesson in humility.
+Run this world for 2000 years, then restart it 0.1°C warmer or cooler and compare. This is not a challenge you can win or lose — it's a lesson in humility.
 
 This is why predicting ice sheet collapse requires not one simulation, but hundreds.`,
-    briefing_zh: `两次模拟。相同的参数。一个微小的差异：0.01°C。
+    briefing_zh: `两次模拟。相同的参数。一个微小的差异：0.1°C的海洋升温。
 
-观察它们在2000年中的分歧。这不是一个你能赢或输的挑战——这是一堂关于谦逊的课。
+让这个世界运行2000年，然后调暖或调冷0.1°C重新开始，比较两者。这不是一个你能赢或输的挑战——这是一堂关于谦逊的课。
 
 这就是为什么预测冰盖崩塌需要的不是一次模拟，而是数百次。`,
-    debrief_en: `What you witnessed is sensitivity to initial conditions — a hallmark of complex dynamical systems. In ice sheet science, this means that any single simulation is just one possible future.
+    debrief_en: `What you witnessed is how sensitive a system near a tipping point is to small differences — a hallmark of complex dynamical systems. In ice sheet science, this means that any single simulation is just one possible future.
 
 This is why the IPCC reports present ranges of sea level rise projections, not single numbers. Scientists run "ensemble" simulations — hundreds of runs with slightly different inputs — to capture the full range of possibilities.`,
-    debrief_zh: `你所看到的是对初始条件的敏感性——复杂动力系统的标志。在冰盖科学中，这意味着任何单次模拟都只是一种可能的未来。
+    debrief_zh: `你所看到的是临界点附近的系统对微小差异的敏感性——复杂动力系统的标志。在冰盖科学中，这意味着任何单次模拟都只是一种可能的未来。
 
 这就是为什么IPCC报告呈现的是海平面上升预测的范围，而不是单一数字。科学家运行"集合"模拟——数百次输入略有不同的运行——以捕捉全部可能性的范围。`,
   },

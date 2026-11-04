@@ -1,99 +1,88 @@
 /**
- * Hook that periodically checks achievement conditions.
- * Throttled to ~1Hz to minimize performance impact.
+ * Unlocks achievements. Progress-based conditions are polled at 1 Hz;
+ * challenge results and physics events are handled as they happen, so
+ * short-lived values (a result dismissed within a second, an event carried
+ * by a single physics step) are not missed.
  */
 
-import { useEffect, useRef } from 'react';
-import { useGameStore } from '../store/game-store';
+import { useEffect } from 'react';
+import { useGameStore, type ChallengeResult } from '../store/game-store';
 import { usePhysicsStore } from '../store/physics-store';
-import { useAchievementStore } from '../store/achievement-store';
-import { challenges } from '../challenges';
+import { useAchievementStore, TIME_TRAVELER_YEARS } from '../store/achievement-store';
+import { PARAM_SLIDER_RANGES } from '../store/param-ranges';
+
+const POLL_INTERVAL_MS = 1000;
+
+function checkProgressAchievements(): void {
+  const { unlock, totalYearsSimulated } = useAchievementStore.getState();
+  const game = useGameStore.getState();
+  const progress = game.challengeProgress;
+  const wonIds = progress.filter((p) => p.status === 'won').map((p) => p.id);
+
+  // Beginner
+  if (wonIds.length >= 1) unlock('first_win');
+  if (progress.some((p) => p.status === 'lost')) unlock('first_fail');
+  if ((progress.find((p) => p.id === 1)?.bestStars ?? 0) >= 3) unlock('steady_rock');
+  if (wonIds.includes(7)) unlock('patient_observer');
+
+  // Explorer
+  if (totalYearsSimulated > TIME_TRAVELER_YEARS) unlock('time_traveler');
+  if (game.params.T_atm_delta >= PARAM_SLIDER_RANGES.T_atm_delta.max) unlock('extremist');
+  if (wonIds.includes(6)) unlock('geoengineer');
+
+  // Mastery
+  if (progress.some((p) => (p.bestScore ?? 0) >= 100)) unlock('hundred');
+  if (wonIds.length >= 8) unlock('all_clear');
+  if (wonIds.length >= 8 && progress.every((p) => (p.bestStars ?? 0) >= 3)) unlock('grand_master');
+
+  // Hidden
+  if (wonIds.includes(5)) unlock('impossible_mission');
+}
+
+function checkResultAchievements(result: ChallengeResult): void {
+  const { unlock } = useAchievementStore.getState();
+  if (!result.won) {
+    // Also covers failing a replay of an already-won challenge (its status stays 'won').
+    unlock('first_fail');
+    return;
+  }
+  // The Balance starts off balance, so it takes at least one adjustment.
+  if (result.challengeId === 1 && result.paramChanges === 1) unlock('zero_intervention');
+  if (result.photoFinish) unlock('last_second');
+}
+
+/** Accumulate simulated model years; a new scenario epoch restarts the baseline. */
+function createYearCounter(): () => void {
+  let last: { epoch: number; year: number } | null = null;
+  return () => {
+    const { epoch, state } = usePhysicsStore.getState();
+    if (!state) return;
+    if (last && last.epoch === epoch) {
+      useAchievementStore.getState().addSimulatedYears(state.year - last.year);
+    }
+    last = { epoch, year: state.year };
+  };
+}
 
 export function useAchievementChecker() {
-  const unlock = useAchievementStore((s) => s.unlock);
-  const isUnlocked = useAchievementStore((s) => s.isUnlocked);
-  const lastCheckRef = useRef(0);
-
   useEffect(() => {
+    const countYears = createYearCounter();
     const interval = setInterval(() => {
-      const now = Date.now();
-      if (now - lastCheckRef.current < 1000) return; // 1Hz throttle
-      lastCheckRef.current = now;
-
-      const game = useGameStore.getState();
-      const physics = usePhysicsStore.getState();
-      const state = physics.state;
-
-      const progress = game.challengeProgress;
-      const wonIds = progress.filter((p) => p.status === 'won').map((p) => p.id);
-      const lostAny = progress.some((p) => p.status === 'lost');
-
-      // Beginner achievements
-      if (wonIds.length >= 1 && !isUnlocked('first_win')) {
-        unlock('first_win');
-      }
-      if (lostAny && !isUnlocked('first_fail')) {
-        unlock('first_fail');
-      }
-      const ch1 = progress.find((p) => p.id === 1);
-      if (ch1?.bestStars && ch1.bestStars >= 3 && !isUnlocked('steady_rock')) {
-        unlock('steady_rock');
-      }
-
-      // Explorer achievements
-      if (state && state.year > 10000 && !isUnlocked('time_traveler')) {
-        unlock('time_traveler');
-      }
-      if (game.params.T_atm_delta >= 20 && !isUnlocked('extremist')) {
-        unlock('extremist');
-      }
-      if (wonIds.includes(6) && !isUnlocked('geoengineer')) {
-        unlock('geoengineer');
-      }
-
-      // Mastery achievements
-      const anyHundred = progress.some((p) => p.bestScore != null && p.bestScore >= 100);
-      if (anyHundred && !isUnlocked('hundred')) {
-        unlock('hundred');
-      }
-      if (wonIds.length >= 8 && !isUnlocked('all_clear')) {
-        unlock('all_clear');
-      }
-      const allThreeStars = progress.every((p) => p.bestStars != null && p.bestStars >= 3);
-      if (allThreeStars && wonIds.length >= 8 && !isUnlocked('grand_master')) {
-        unlock('grand_master');
-      }
-
-      // Hidden achievements
-      if (wonIds.includes(5) && !isUnlocked('impossible_mission')) {
-        unlock('impossible_mission');
-      }
-
-      // Events-based achievements
-      if (state?.events) {
-        if (state.events.some((e) => e.type === 'city_flooded') && !isUnlocked('sea_level_line')) {
-          unlock('sea_level_line');
-        }
-      }
-
-      // Challenge result-based achievements
-      const result = game.challengeResult;
-      if (result) {
-        // Zero intervention: won Challenge 1 with 0 param changes
-        if (result.challengeId === 1 && result.won && game.challengeParamChanges === 0 && !isUnlocked('zero_intervention')) {
-          unlock('zero_intervention');
-        }
-        // Last second: won in final 10 years
-        const challenge = challenges.find((c) => c.id === result.challengeId);
-        if (challenge && result.won) {
-          const margin = challenge.duration_years - result.elapsedYears;
-          if (margin <= 10 && margin >= 0 && !isUnlocked('last_second')) {
-            unlock('last_second');
-          }
-        }
-      }
-    }, 1000);
-
+      countYears();
+      checkProgressAchievements();
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [unlock, isUnlocked]);
+  }, []);
+
+  useEffect(() => useGameStore.subscribe((s, prev) => {
+    if (s.challengeResult && s.challengeResult !== prev.challengeResult) {
+      checkResultAchievements(s.challengeResult);
+    }
+  }), []);
+
+  useEffect(() => usePhysicsStore.subscribe((s, prev) => {
+    if (s.events !== prev.events && s.events.some((e) => e.type === 'city_flooded')) {
+      useAchievementStore.getState().unlock('sea_level_line');
+    }
+  }), []);
 }

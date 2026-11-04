@@ -68,10 +68,19 @@ export function drawAxes(dc: DrawContext): void {
   ctx.fillText('sea level', 40, seaY - 4);
 }
 
+/** Top edge of the first warning panel, and the gap between stacked panels (CSS px). */
+export const WARNING_PANEL_TOP = 8;
+export const WARNING_PANEL_GAP = 6;
+
 /**
  * Draw a MISI warning overlay when MISI is active.
+ * Returns the y just below the panel, for stacking further warnings.
  */
-export function drawMISIWarning(dc: DrawContext, language: Language = 'en'): void {
+export function drawMISIWarning(
+  dc: DrawContext,
+  language: Language = 'en',
+  top: number = WARNING_PANEL_TOP,
+): number {
   const { ctx, width, height } = dc;
 
   // Red pulsing border
@@ -89,9 +98,9 @@ export function drawMISIWarning(dc: DrawContext, language: Language = 'en'): voi
     ? '\u63a5\u5730\u7ebf\u6b63\u5728\u5411\u5185\u9646\u5feb\u901f\u540e\u9000\u3002\u6b63\u53cd\u9988\u53ef\u80fd\u5bfc\u81f4\u4e0d\u53ef\u9006\u7684\u51b0\u76d6\u5d29\u584c\u3002'
     : 'The grounding line is retreating rapidly inland. Positive feedback may cause irreversible collapse.';
 
-  drawTooltipPanel(ctx, {
+  const panel = drawTooltipPanel(ctx, {
     x: width / 2 - panelW / 2,
-    y: 8,
+    y: top,
     maxWidth: panelW,
     padding: 8,
     bgColor: `rgba(60, 10, 10, ${0.85 + pulse * 0.1})`,
@@ -106,12 +115,18 @@ export function drawMISIWarning(dc: DrawContext, language: Language = 'en'): voi
     body,
     lineHeight: 15,
   });
+  return top + panel.height;
 }
 
 /**
- * Draw a MICI warning overlay when MICI is active.
+ * Draw a MICI warning overlay when MICI is active, at `top` (below the MISI
+ * panel when both are shown). Returns the y just below the panel.
  */
-export function drawMICIWarning(dc: DrawContext, language: Language = 'en'): void {
+export function drawMICIWarning(
+  dc: DrawContext,
+  language: Language = 'en',
+  top: number = WARNING_PANEL_TOP,
+): number {
   const { ctx, width, height } = dc;
 
   // Orange pulsing border (different frequency from MISI red)
@@ -120,7 +135,7 @@ export function drawMICIWarning(dc: DrawContext, language: Language = 'en'): voi
   ctx.lineWidth = 3;
   ctx.strokeRect(6, 6, width - 12, height - 12);
 
-  // Multiline warning panel (offset below MISI panel if both active)
+  // Multiline warning panel (caller stacks it below the MISI panel if both active)
   const panelW = Math.min(340, width - 20);
   const title = language === 'zh'
     ? '\u26a0 \u6d77\u6d0b\u51b0\u5d16\u4e0d\u7a33\u5b9a\u6027'
@@ -129,9 +144,9 @@ export function drawMICIWarning(dc: DrawContext, language: Language = 'en'): voi
     ? '\u51b0\u5d16\u8d85\u8fc7\u4e34\u754c\u9ad8\u5ea6\uff0c\u53ef\u80fd\u5728\u81ea\u8eab\u91cd\u91cf\u4e0b\u5d29\u584c\u3002\u8fd9\u4f1a\u5bfc\u81f4\u5feb\u901f\u7684\u51b0\u5c42\u635f\u5931\u548c\u6d77\u5e73\u9762\u4e0a\u5347\u3002'
     : 'The ice cliff exceeds critical height and may collapse under its own weight. This drives rapid ice loss and sea level rise.';
 
-  drawTooltipPanel(ctx, {
+  const panel = drawTooltipPanel(ctx, {
     x: width / 2 - panelW / 2,
-    y: 55, // below MISI panel
+    y: top,
     maxWidth: panelW,
     padding: 8,
     bgColor: `rgba(50, 25, 0, ${0.85 + pulse * 0.1})`,
@@ -146,6 +161,22 @@ export function drawMICIWarning(dc: DrawContext, language: Language = 'en'): voi
     body,
     lineHeight: 15,
   });
+  return top + panel.height;
+}
+
+/**
+ * Draw the active instability warnings stacked top-down by their measured
+ * heights (the MICI panel used to sit at a fixed y = 55 and overlap MISI).
+ */
+export function drawInstabilityWarnings(
+  dc: DrawContext,
+  language: Language,
+  misiActive: boolean,
+  miciActive: boolean,
+): void {
+  let top = WARNING_PANEL_TOP;
+  if (misiActive) top = drawMISIWarning(dc, language, top) + WARNING_PANEL_GAP;
+  if (miciActive) drawMICIWarning(dc, language, top);
 }
 
 /**

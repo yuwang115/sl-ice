@@ -19,6 +19,15 @@ venv
 .playwright-cli
 .claude
 
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Stray tool output: Next.js trace dir (this is a Vite project) and an empty
+# root output/ dir that no script writes to
+.next/
+/output/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

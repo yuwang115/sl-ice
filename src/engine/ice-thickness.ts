@@ -23,6 +23,21 @@ import type { ModelGrid } from './types';
  * @param dt Time step (years)
  * @returns New ice thickness (m)
  */
+/**
+ * Upwind volume flux (m²/yr) through the face between cells i and i+1.
+ * Next to an ice-free cell the face takes the ice cell's own velocity:
+ * the ice-free cell's u = 0 is a placeholder, and averaging with it would
+ * halve the outflow through a retreated calving front.
+ */
+function faceFlux(H: Float64Array, u_avg: Float64Array, i: number): number {
+  const iceLeft = H[i] >= H_MIN;
+  const iceRight = H[i + 1] >= H_MIN;
+  let uFace: number;
+  if (iceLeft === iceRight) uFace = 0.5 * (u_avg[i] + u_avg[i + 1]);
+  else uFace = iceLeft ? u_avg[i] : u_avg[i + 1];
+  return uFace * (uFace >= 0 ? H[i] : H[i + 1]);
+}
+
 export function evolveThickness(
   H: Float64Array,
   u_avg: Float64Array,
@@ -34,35 +49,14 @@ export function evolveThickness(
   const { nx, dx } = grid;
   const H_new = new Float64Array(nx);
 
+  // flux[i] = flux through face i+½; the last face is the calving flux
+  // ū·H out of the domain end. No flux enters at the ice divide (i = 0).
+  const flux = new Float64Array(nx);
+  for (let i = 0; i < nx - 1; i++) flux[i] = faceFlux(H, u_avg, i);
+  flux[nx - 1] = u_avg[nx - 1] * H[nx - 1];
+
   for (let i = 0; i < nx; i++) {
-    // Compute flux divergence ∂(ūH)/∂x using upwind scheme
-    let dFdx = 0;
-
-    if (i === 0) {
-      // Ice divide: symmetry BC, ∂H/∂x = 0, u = 0
-      // Only outward flux at i+1/2
-      const u_half = 0.5 * (u_avg[0] + u_avg[1]);
-      const H_flux = u_half >= 0 ? H[0] : H[1];
-      dFdx = (u_half * H_flux) / dx;
-    } else if (i === nx - 1) {
-      // Calving front: only inward flux at i-1/2
-      const u_half_left = 0.5 * (u_avg[i - 1] + u_avg[i]);
-      const H_flux_left = u_half_left >= 0 ? H[i - 1] : H[i];
-
-      // Outward flux at calving front = ū * H (calving flux)
-      const F_out = u_avg[i] * H[i];
-      const F_in = u_half_left * H_flux_left;
-      dFdx = (F_out - F_in) / dx;
-    } else {
-      // Interior: upwind flux at i+1/2 and i-1/2
-      const u_right = 0.5 * (u_avg[i] + u_avg[i + 1]);
-      const u_left = 0.5 * (u_avg[i - 1] + u_avg[i]);
-
-      const H_right = u_right >= 0 ? H[i] : H[i + 1];
-      const H_left = u_left >= 0 ? H[i - 1] : H[i];
-
-      dFdx = (u_right * H_right - u_left * H_left) / dx;
-    }
+    const dFdx = (flux[i] - (i > 0 ? flux[i - 1] : 0)) / dx;
 
     // Time step
     H_new[i] = H[i] + dt * (smb[i] - basal_melt[i] - dFdx);
@@ -79,8 +73,37 @@ export function evolveThickness(
 }
 
 /**
- * Apply calving: remove ice thinner than a threshold at the calving front.
- * Also ensure no isolated floating ice patches.
+ * Remove floating ice that an ice-free gap has cut off from the anchored
+ * ice body (grounded ice, or the divide at i = 0). Such icebergs would
+ * drift away; left in place they make the momentum system singular.
+ */
+function removeDetachedIce(H: Float64Array, is_floating: Uint8Array): boolean {
+  const nx = H.length;
+  let lastAnchor = -1;
+  for (let i = 0; i < nx; i++) {
+    if (H[i] >= H_MIN && (i === 0 || !is_floating[i])) lastAnchor = i;
+  }
+  if (lastAnchor < 0) return false;
+
+  let removed = false;
+  let gap = false;
+  for (let i = lastAnchor + 1; i < nx; i++) {
+    if (H[i] < H_MIN) {
+      gap = true;
+    } else if (gap) {
+      H[i] = 0;
+      removed = true;
+    }
+  }
+  return removed;
+}
+
+/**
+ * Apply calving: remove ice thinner than a threshold at the calving front,
+ * and floating ice detached from the main ice body.
+ *
+ * `calved` is true only when ice was actually removed this call, so
+ * already-open water at the ocean end does not register as calving.
  */
 export function applyCalving(
   H: Float64Array,
@@ -89,15 +112,14 @@ export function applyCalving(
 ): { H: Float64Array; calved: boolean } {
   const nx = H.length;
   const H_out = new Float64Array(H);
-  let calved = false;
+  let calved = removeDetachedIce(H_out, is_floating);
 
   // From the ocean end, remove thin floating ice
   for (let i = nx - 1; i >= 0; i--) {
-    if (is_floating[i] && H_out[i] < minShelfThickness) {
+    if (H_out[i] >= minShelfThickness) break; // Stop at substantial ice
+    if (is_floating[i] && H_out[i] > 0) {
       H_out[i] = 0;
       calved = true;
-    } else if (H_out[i] >= minShelfThickness) {
-      break; // Stop once we hit substantial ice
     }
   }
 

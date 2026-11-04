@@ -23,7 +23,9 @@ const ResetIcon = () => (
 );
 
 export default function PlaybackControls() {
-  const { speed, setSpeed, setRunning } = useGameStore();
+  const speed = useGameStore((s) => s.speed);
+  const setSpeed = useGameStore((s) => s.setSpeed);
+  const setRunning = useGameStore((s) => s.setRunning);
   const reset = usePhysicsStore((s) => s.reset);
 
   const speeds: { key: SimulationSpeed; label: ReactNode }[] = [

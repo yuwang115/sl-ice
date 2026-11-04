@@ -24,6 +24,7 @@ export default function AchievementToast() {
 
   return (
     <div
+      role="status"
       className="fixed top-4 left-1/2 -translate-x-1/2 z-50 glass-panel rounded-xl px-5 py-3 flex items-start gap-3 max-w-sm"
       style={{
         animation: 'slide-in-from-top 0.4s ease-out',
@@ -49,9 +50,11 @@ export default function AchievementToast() {
         </p>
       </div>
       <button
+        type="button"
         onClick={dismissToast}
         className="text-xs flex-shrink-0 mt-1"
         style={{ color: 'var(--text-muted)' }}
+        aria-label={isZh ? '关闭成就通知' : 'Dismiss achievement'}
       >
         ✕
       </button>

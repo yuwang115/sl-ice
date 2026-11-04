@@ -12,205 +12,239 @@
  *   4. Check convergence, repeat
  *
  * Matrix structure: 2D grid (i,j) flattened to k = i*nz + j.
- * Bandwidth = nz (diagonals at offsets -nz, -1, 0, +1, +nz).
+ * Bandwidth = nz (diagonals at offsets -nz, -1, 0, +1, +nz). Every row is
+ * (weakly) diagonally dominant, so elimination needs no pivoting.
+ *
+ * Ice margins: any ice column whose neighbour holds no ice (the domain end,
+ * a calving front that has retreated, or an upstream ice-free gap) gets the
+ * hydrostatic margin stress as a known longitudinal flux instead of being
+ * coupled to the zero-velocity ice-free cell.
  */
 
 import {
-  RHO_ICE, G,
-  PICARD_TOL, PICARD_MAX_ITER, PICARD_OMEGA,
-  C_SLIDING, SLIDING_M, RHO_WATER, H_MIN, U_MAX,
+  RHO_ICE, RHO_WATER, G, H_MIN, U_MAX,
+  PICARD_TOL, PICARD_MAX_ITER, PICARD_OMEGA, C_SLIDING,
 } from './constants';
 import {
-  createBandedMatrix, bandSet, bandAdd, bandSolve, bandClear,
+  createBandedMatrix, bandSet, bandAdd, bandSolveNoPivot, bandClear,
 } from './matrix/banded';
+import type { BandedMatrix } from './matrix/banded';
 import { zeros, relDiff, copyArray } from './matrix/utils';
 import { computeViscosityField } from './temperature';
 import { subElementFriction } from './grounding-line';
+import { basalDragCoefficient } from './friction';
 import type { ModelState } from './types';
+
+/**
+ * Depth-averaged longitudinal deviatoric stress at an ice margin,
+ *   4η ∂u/∂x = (½ ρᵢ g H² − ½ ρ_w g D²) / H,
+ * with D the water depth against the face (the draft if floating,
+ * −b for a grounded marine cliff, 0 on land). Positive = extension.
+ */
+export function marginStress(H: number, bed: number): number {
+  const D = Math.min(H * RHO_ICE / RHO_WATER, Math.max(0, -bed));
+  return (0.5 * RHO_ICE * G * H * H - 0.5 * RHO_WATER * G * D * D) / H;
+}
+
+/** True where a column carries enough ice to take part in the momentum balance. */
+function hasIceAt(H: Float64Array, i: number): boolean {
+  return i >= 0 && i < H.length && H[i] >= H_MIN;
+}
+
+/** Surface slope with one-sided differences next to ice-free cells. */
+function surfaceSlope(state: ModelState, i: number, iceLeft: boolean, iceRight: boolean): number {
+  const { s, grid } = state;
+  if (iceLeft && iceRight) return (s[i + 1] - s[i - 1]) / (2 * grid.dx);
+  if (iceLeft) return (s[i] - s[i - 1]) / grid.dx;
+  return (s[i + 1] - s[i]) / grid.dx;
+}
+
+/** Basal row (j = 0): Weertman-type sliding, or free slip under floating ice. */
+function assembleBasalRow(
+  mat: BandedMatrix,
+  state: ModelState,
+  eta: Float64Array,
+  uCurrent: Float64Array,
+  i: number,
+): void {
+  const { H, b, N_eff, is_floating, grid } = state;
+  const k = i * grid.nz;
+  const frictionFactor = subElementFriction(i, H, b, is_floating);
+
+  if (is_floating[i] || frictionFactor < 1e-6) {
+    // Free slip: du/dσ = 0
+    bandSet(mat, k, k, 1.0);
+    bandSet(mat, k, k + 1, -1.0);
+    return;
+  }
+
+  // η/(H dσ)·(u₁ − u₀) = β·u₀  with β = τ_b / u_b from the friction law
+  const C_i = state.C_basal ? state.C_basal[i] : C_SLIDING;
+  const beta = basalDragCoefficient(C_i, Math.abs(uCurrent[k]), N_eff[i], H[i]) * frictionFactor;
+  const viscTerm = eta[k] / (H[i] * grid.dsigma);
+  bandSet(mat, k, k, viscTerm + beta);
+  bandSet(mat, k, k + 1, -viscTerm);
+}
+
+/** Interior row (0 < j < nz-1): x- and σ-diffusion plus driving stress. */
+function assembleInteriorRow(
+  mat: BandedMatrix,
+  rhs: Float64Array,
+  state: ModelState,
+  eta: Float64Array,
+  i: number,
+  j: number,
+  iceLeft: boolean,
+  iceRight: boolean,
+): void {
+  const { H, b, grid } = state;
+  const { nz, dx, dsigma } = grid;
+  const k = i * nz + j;
+  const Hi = H[i];
+
+  let rowRhs = RHO_ICE * G * surfaceSlope(state, i, iceLeft, iceRight);
+  let diag = 0;
+
+  // x-direction: (Flux_{i+½} − Flux_{i−½}) / dx with Flux = 4η ∂u/∂x.
+  // At a margin the flux is the known hydrostatic stress, moved to the RHS.
+  const front = iceLeft && iceRight ? 0 : marginStress(Hi, b[i]);
+  if (iceLeft) {
+    const c = 2 * (eta[k - nz] + eta[k]) / (dx * dx); // 4·η̄/dx²
+    bandAdd(mat, k, k - nz, c);
+    diag -= c;
+  } else {
+    rowRhs += front / dx;
+  }
+  if (iceRight) {
+    const c = 2 * (eta[k] + eta[k + nz]) / (dx * dx);
+    bandAdd(mat, k, k + nz, c);
+    diag -= c;
+  } else {
+    rowRhs -= front / dx;
+  }
+
+  // σ-direction: (1/H²) ∂/∂σ(η ∂u/∂σ)
+  const sScale = 0.5 / (Hi * Hi * dsigma * dsigma);
+  const cBelow = (eta[k - 1] + eta[k]) * sScale;
+  const cAbove = (eta[k] + eta[k + 1]) * sScale;
+  bandAdd(mat, k, k - 1, cBelow);
+  bandAdd(mat, k, k + 1, cAbove);
+  diag -= cBelow + cAbove;
+
+  // Lateral (side-wall) drag on floating ice: −γ·u
+  const gamma = state.is_floating[i] ? state.lateral_drag?.[i] ?? 0 : 0;
+  if (gamma > 0) diag -= gamma;
+
+  bandAdd(mat, k, k, diag);
+  rhs[k] = rowRhs;
+}
+
+/**
+ * Columns that take part in the momentum balance. The divide (i = 0),
+ * ice-free columns and isolated single cells are pinned to u = 0.
+ */
+function activeColumns(H: Float64Array, nz: number): Uint8Array {
+  const nx = H.length;
+  const active = new Uint8Array(nx);
+  for (let i = 1; i < nx; i++) {
+    const connected = hasIceAt(H, i - 1) || hasIceAt(H, i + 1);
+    active[i] = hasIceAt(H, i) && connected && nz > 1 ? 1 : 0;
+  }
+  return active;
+}
+
+/** Assemble the full BP system for the current viscosity field. */
+function assembleSystem(
+  mat: BandedMatrix,
+  rhs: Float64Array,
+  state: ModelState,
+  eta: Float64Array,
+  uCurrent: Float64Array,
+  active: Uint8Array,
+): void {
+  const { H, grid } = state;
+  const { nx, nz } = grid;
+  bandClear(mat);
+  rhs.fill(0);
+
+  for (let i = 0; i < nx; i++) {
+    const iceLeft = hasIceAt(H, i - 1);
+    const iceRight = hasIceAt(H, i + 1);
+    if (!active[i]) {
+      for (let j = 0; j < nz; j++) bandSet(mat, i * nz + j, i * nz + j, 1.0);
+      continue;
+    }
+
+    assembleBasalRow(mat, state, eta, uCurrent, i);
+    for (let j = 1; j < nz - 1; j++) {
+      assembleInteriorRow(mat, rhs, state, eta, i, j, iceLeft, iceRight);
+    }
+    // Surface (j = nz-1): stress-free, du/dσ = 0
+    const kTop = i * nz + nz - 1;
+    bandSet(mat, kTop, kTop, 1.0);
+    bandSet(mat, kTop, kTop - 1, -1.0);
+  }
+}
+
+/** Convergence diagnostics of the last Picard loop (filled when requested). */
+export interface PicardStats {
+  iterations: number;
+  /** Relative change between the last two iterates. */
+  residual: number;
+}
 
 /**
  * Solve the BP velocity field using Picard iteration.
  *
  * @param state Current model state (contains H, b, s, u, etc.)
- * @param params User parameters
  * @param T_atm_base Base atmospheric temperature
+ * @param stats Optional object that receives convergence diagnostics
  * @returns Updated velocity field u (nx * nz)
  */
 export function solveBP(
   state: ModelState,
   T_atm_base: number,
+  stats?: PicardStats,
 ): Float64Array {
-  const { grid, H, b, s, u, smb, N_eff, is_floating, params } = state;
-  const { nx, nz, dx, dsigma } = grid;
+  const { grid, H, s, u, smb, params } = state;
+  const { nx, nz } = grid;
   const n_total = nx * nz;
-  const halfBand = nz; // Bandwidth from x-direction coupling
 
-  // Initialize with previous velocity
+  const active = activeColumns(H, nz);
   let u_current = copyArray(u);
+  // Pinned columns are exactly zero from the start (no relaxation residue).
+  for (let i = 0; i < nx; i++) {
+    if (!active[i]) u_current.fill(0, i * nz, (i + 1) * nz);
+  }
   let u_next = zeros(n_total);
-  const mat = createBandedMatrix(n_total, halfBand);
+  const mat = createBandedMatrix(n_total, nz);
   const rhs = zeros(n_total);
 
   for (let iter = 0; iter < PICARD_MAX_ITER; iter++) {
-    bandClear(mat);
-    rhs.fill(0);
+    const eta = computeViscosityField(u_current, H, s, smb, grid, params, T_atm_base);
+    assembleSystem(mat, rhs, state, eta, u_current, active);
+    const solved = bandSolveNoPivot(mat, rhs);
 
-    // 1. Compute viscosity from current velocity
-    const eta = computeViscosityField(
-      u_current, H, s, smb, grid, params, T_atm_base
-    );
-
-    // 2. Assemble linear system
-
-    for (let i = 0; i < nx; i++) {
-      for (let j = 0; j < nz; j++) {
-        const k = i * nz + j;
-
-        // ── Boundary: ice divide (i = 0): u = 0 (symmetry) ──
-        if (i === 0) {
-          bandSet(mat, k, k, 1.0);
-          rhs[k] = 0;
-          continue;
-        }
-
-        // ── Skip if no ice ──
-        if (H[i] < H_MIN) {
-          bandSet(mat, k, k, 1.0);
-          rhs[k] = 0;
-          continue;
-        }
-
-        // ── Surface BC (j = nz-1): stress-free, du/dσ = 0 ──
-        if (j === nz - 1) {
-          bandSet(mat, k, k, 1.0);
-          // du/dσ = 0 → u[i,nz-1] = u[i,nz-2]
-          if (nz > 1) {
-            bandSet(mat, k, k - 1, -1.0);
-          }
-          rhs[k] = 0;
-          continue;
-        }
-
-        // ── Basal BC (j = 0): sliding law or free slip ──
-        if (j === 0) {
-          const frictionFactor = subElementFriction(i, H, b, is_floating);
-
-          if (is_floating[i] || frictionFactor < 1e-6) {
-            // Free slip (floating or no friction): du/dσ = 0
-            bandSet(mat, k, k, 1.0);
-            if (nz > 1) {
-              bandSet(mat, k, k + 1, -1.0);
-            }
-            rhs[k] = 0;
-          } else {
-            // Sliding law: η/H * du/dσ = -C * u_b^m * N^q * frictionFactor
-            // Linearized: η/(H*dσ) * (u[i,1] - u[i,0]) = -β * u[i,0]
-            // where β = C * |u_b|^(m-1) * N^q * frictionFactor
-            const u_b = Math.abs(u_current[k]) + 1e-6; // Regularize
-            const N = Math.max(N_eff[i], 0);
-            const C_i = state.C_basal ? state.C_basal[i] : C_SLIDING;
-            const beta = C_i * Math.pow(u_b, SLIDING_M - 1) * N * frictionFactor;
-
-            const eta_b = eta[k];
-            const viscTerm = eta_b / (H[i] * dsigma);
-
-            // eta/(H*dσ) * (u[i,1] - u[i,0]) + β * u[i,0] = 0
-            // → (viscTerm + β) * u[i,0] - viscTerm * u[i,1] = 0
-            bandSet(mat, k, k, viscTerm + beta);
-            if (nz > 1) {
-              bandSet(mat, k, k + 1, -viscTerm);
-            }
-            rhs[k] = 0;
-          }
-          continue;
-        }
-
-        // ── Interior points ──
-        const Hi = H[i];
-        const Hi2 = Hi * Hi;
-
-        // Driving stress (RHS)
-        let dsdx: number;
-        if (i < nx - 1) {
-          dsdx = (s[i + 1] - s[i - 1]) / (2 * dx);
-        } else {
-          dsdx = (s[i] - s[i - 1]) / dx;
-        }
-        const driving = RHO_ICE * G * dsdx;
-
-        // --- x-direction: ∂/∂x(4η ∂u/∂x) ---
-        // At (i-1,j) and (i+1,j), offset = ±nz
-        const eta_left = 0.5 * (eta[(i - 1) * nz + j] + eta[k]);
-        let eta_right: number;
-        if (i < nx - 1) {
-          eta_right = 0.5 * (eta[k] + eta[(i + 1) * nz + j]);
-        } else {
-          eta_right = eta[k];
-        }
-
-        const coeff_x_left = 4 * eta_left / (dx * dx);
-        const coeff_x_right = (i < nx - 1) ? 4 * eta_right / (dx * dx) : 0;
-        const coeff_x_center = -(coeff_x_left + coeff_x_right);
-
-        // --- σ-direction: (1/H²) ∂/∂σ(η ∂u/∂σ) ---
-        const eta_below = 0.5 * (eta[i * nz + (j - 1)] + eta[k]);
-        const eta_above = 0.5 * (eta[k] + eta[i * nz + (j + 1)]);
-
-        const coeff_s_below = eta_below / (Hi2 * dsigma * dsigma);
-        const coeff_s_above = eta_above / (Hi2 * dsigma * dsigma);
-        const coeff_s_center = -(coeff_s_below + coeff_s_above);
-
-        // Assemble row k
-        const diagCoeff = coeff_x_center + coeff_s_center;
-        bandSet(mat, k, k, diagCoeff);
-
-        // x-direction neighbors
-        bandAdd(mat, k, (i - 1) * nz + j, coeff_x_left);
-        if (i < nx - 1) {
-          bandAdd(mat, k, (i + 1) * nz + j, coeff_x_right);
-        }
-
-        // σ-direction neighbors
-        bandAdd(mat, k, i * nz + (j - 1), coeff_s_below);
-        bandAdd(mat, k, i * nz + (j + 1), coeff_s_above);
-
-        // RHS: driving stress
-        rhs[k] = driving;
-
-        // ── Calving front BC (i = nx-1): apply ocean back-pressure ──
-        if (i === nx - 1) {
-          // Instead of clearing, just adjust the RHS for the calving stress
-          const D = is_floating[i]
-            ? Math.min(Hi * RHO_ICE / RHO_WATER, Math.max(0, -b[i]))
-            : 0;
-          const calvingStress =
-            (0.5 * RHO_ICE * G * Hi * Hi - 0.5 * RHO_WATER * G * D * D) / (Hi * dx);
-          // Add calving stress as a Neumann contribution
-          rhs[k] += calvingStress;
-        }
-      }
-    }
-
-    // 3. Solve the linear system
-    const solved = bandSolve(mat, rhs);
-
-    // 4. Relaxation + velocity cap
+    // Relaxation + velocity cap
     for (let k = 0; k < n_total; k++) {
       let relaxed = PICARD_OMEGA * solved[k] + (1 - PICARD_OMEGA) * u_current[k];
       // Clamp: non-negative and CFL-safe
       if (relaxed < 0) relaxed = 0;
       if (relaxed > U_MAX) relaxed = U_MAX;
-      // Guard against NaN/Inf from singular matrix
-      if (!isFinite(relaxed)) relaxed = 0;
+      // Guard against NaN/Inf from a degenerate system
+      if (!Number.isFinite(relaxed)) relaxed = 0;
       u_next[k] = relaxed;
     }
 
-    // 5. Check convergence
     const diff = relDiff(u_next, u_current);
     const previous = u_current;
     u_current = u_next;
     u_next = previous;
 
+    if (stats) {
+      stats.iterations = iter + 1;
+      stats.residual = diff;
+    }
     if (diff < PICARD_TOL) {
       break;
     }
@@ -220,7 +254,8 @@ export function solveBP(
 }
 
 /**
- * Compute depth-averaged velocity from the 2D velocity field.
+ * Compute depth-averaged velocity from the 2D velocity field
+ * (trapezoidal rule over the uniform σ levels, endpoints half-weighted).
  */
 export function depthAverageVelocity(
   u: Float64Array,
@@ -228,12 +263,17 @@ export function depthAverageVelocity(
   nz: number,
 ): Float64Array {
   const u_avg = new Float64Array(nx);
+  if (nz < 2) {
+    for (let i = 0; i < nx; i++) u_avg[i] = u[i * nz];
+    return u_avg;
+  }
   for (let i = 0; i < nx; i++) {
-    let sum = 0;
-    for (let j = 0; j < nz; j++) {
-      sum += u[i * nz + j];
+    const base = i * nz;
+    let sum = 0.5 * (u[base] + u[base + nz - 1]);
+    for (let j = 1; j < nz - 1; j++) {
+      sum += u[base + j];
     }
-    u_avg[i] = sum / nz;
+    u_avg[i] = sum / (nz - 1);
   }
   return u_avg;
 }

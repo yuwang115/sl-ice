@@ -10,6 +10,7 @@
  */
 
 import { toCanvasX, toCanvasY, type DrawContext } from '../draw-bedrock';
+import { frameSteps, REFERENCE_FRAME_S } from '../frame-timing';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -69,6 +70,13 @@ let penguins: Penguin[] = [];
 let particles: FloatingParticle[] = [];
 let nextId = 0;
 let respawnCooldown = 0;
+/**
+ * Pending 60 Hz simulation steps. Penguin behaviour is written in whole
+ * frames (state timers, `% n === 0` spawns), so it advances in fixed steps
+ * while drawing happens every frame — same speed at any refresh rate.
+ */
+let stepAccumulator = 0;
+const MAX_STEPS_PER_FRAME = 4;
 const MAX_PENGUINS = 8;
 const TARGET_PENGUINS = 5;
 const PENGUIN_HEIGHT_PX = 24; // Base height in canvas pixels
@@ -883,17 +891,20 @@ function drawMiniHeart(
 
 // ── Floating particles drawing ─────────────────────────────────
 
-function drawFloatingParticles(ctx: CanvasRenderingContext2D): void {
+/** Advance floating particles by one 60 Hz step and drop expired ones. */
+function updateFloatingParticles(): void {
   const alive: FloatingParticle[] = [];
-
   for (const fp of particles) {
     fp.x += fp.vx;
     fp.y += fp.vy;
     fp.life++;
+    if (fp.life <= fp.maxLife) alive.push(fp);
+  }
+  particles = alive;
+}
 
-    if (fp.life > fp.maxLife) continue;
-    alive.push(fp);
-
+function drawFloatingParticles(ctx: CanvasRenderingContext2D): void {
+  for (const fp of particles) {
     const alpha = 1 - fp.life / fp.maxLife;
 
     ctx.save();
@@ -941,8 +952,6 @@ function drawFloatingParticles(ctx: CanvasRenderingContext2D): void {
     ctx.globalAlpha = 1;
     ctx.restore();
   }
-
-  particles = alive;
 }
 
 function drawStar(
@@ -1120,22 +1129,15 @@ function updatePenguin(
 
 // ── Main draw (called each frame) ──────────────────────────────
 
-export function drawPenguins(
-  dc: DrawContext,
+/** One fixed 60 Hz simulation step for all penguins and their particles. */
+function stepPenguins(
   H: Float64Array,
   s: Float64Array,
   u_surface: Float64Array,
   xPositions: Float64Array,
   gl_pos_m: number,
+  dc: DrawContext,
 ): void {
-  // Cache for mouse handlers
-  cachedDC = dc;
-  cachedH = H;
-  cachedS = s;
-  cachedXPositions = xPositions;
-
-  const { ctx } = dc;
-
   // Update & cull
   const alive: Penguin[] = [];
   for (const p of penguins) {
@@ -1157,6 +1159,38 @@ export function drawPenguins(
     }
   } else {
     respawnCooldown = 0;
+  }
+
+  updateFloatingParticles();
+}
+
+/** Whole 60 Hz steps due this frame (frame time `dt` in seconds). */
+function takeFixedSteps(dt: number): number {
+  stepAccumulator = Math.min(stepAccumulator + frameSteps(dt), MAX_STEPS_PER_FRAME);
+  const steps = Math.floor(stepAccumulator);
+  stepAccumulator -= steps;
+  return steps;
+}
+
+export function drawPenguins(
+  dc: DrawContext,
+  H: Float64Array,
+  s: Float64Array,
+  u_surface: Float64Array,
+  xPositions: Float64Array,
+  gl_pos_m: number,
+  dt: number = REFERENCE_FRAME_S,
+): void {
+  // Cache for mouse handlers
+  cachedDC = dc;
+  cachedH = H;
+  cachedS = s;
+  cachedXPositions = xPositions;
+
+  const { ctx } = dc;
+
+  for (let step = takeFixedSteps(dt); step > 0; step--) {
+    stepPenguins(H, s, u_surface, xPositions, gl_pos_m, dc);
   }
 
   // Draw each penguin
@@ -1279,8 +1313,22 @@ export function handlePenguinMouseMove(
   penguinCursorState = hover ? 'grab' : 'default';
 }
 
+/** True while a penguin is attached to the pointer. */
+export function hasDraggedPenguin(): boolean {
+  return penguins.some((p) => p.isDragging);
+}
+
+/**
+ * Drop any dragged penguin at its current position (on ice it lands, over the
+ * ocean it falls in). Safe to call when nothing is being dragged.
+ */
 export function handlePenguinMouseUp(): void {
-  if (!cachedDC || !cachedH || !cachedS || !cachedXPositions) return;
+  if (!cachedDC || !cachedH || !cachedS || !cachedXPositions) {
+    // Nothing to evaluate a drop against yet; never leave a penguin stuck.
+    for (const p of penguins) p.isDragging = false;
+    penguinCursorState = 'default';
+    return;
+  }
 
   for (const p of penguins) {
     if (!p.isDragging) continue;
@@ -1349,6 +1397,7 @@ export function resetPenguins(): void {
   particles = [];
   nextId = 0;
   respawnCooldown = 0;
+  stepAccumulator = 0;
   cachedDC = null;
   cachedH = null;
   cachedS = null;

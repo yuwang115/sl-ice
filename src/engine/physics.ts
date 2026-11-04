@@ -13,7 +13,7 @@
 
 import {
   DEFAULT_DX, DEFAULT_NZ, DEFAULT_DOMAIN_LENGTH, DEFAULT_DT,
-  RHO_ICE, VOLUME_TO_SLE,
+  RHO_ICE, VOLUME_TO_SLE, H_MIN, LATERAL_DRAG_DEFAULT,
 } from './constants';
 import { solveBP, depthAverageVelocity, surfaceVelocity, basalVelocity } from './bp-solver';
 import { computeSMB } from './smb';
@@ -26,7 +26,7 @@ import {
 import {
   evolveHydrology, computeEffectivePressure, computeGroundedBasalMelt,
 } from './hydrology';
-import { invertBasalFriction } from './inversion';
+import { invertDragFields } from './inversion';
 import type {
   ModelState, ModelGrid, ScenarioConfig, UserParams,
   PhysicsStatePayload, GameEvent,
@@ -37,6 +37,57 @@ const GIGATONNES_PER_KM3_ICE = RHO_ICE * 1e-3;
 
 /** Maximum allowed CFL number for stability */
 const CFL_MAX = 0.8;
+
+/** Minimum floating thickness (m) that counts as a buttressing ice shelf. */
+const SHELF_MIN_THICKNESS = 50;
+
+/** Model years before a recurring warning (fast retreat, cliff failure) may repeat. */
+const EVENT_COOLDOWN_YEARS = 10;
+const FAST_RETREAT_COOLDOWN_YEARS = 25;
+
+/** E-folding time (model years) of the smoothed grounding-line retreat rate. */
+const GL_RATE_SMOOTHING_YEARS = 5;
+
+/**
+ * Smoothed grounding-line retreat rates (m/yr) behind the events. In the
+ * idealized MISI scenario, forced retreat across the sill runs at
+ * 50–180 m/yr and stops when the forcing is removed; past the tipping point
+ * on the retrograde bed the retreat keeps going and speeds up to
+ * 200–500 m/yr. MISI ends once the retreat has stalled for
+ * MISI_STALL_YEARS, so a temporary slowdown does not end it.
+ */
+const MISI_RETREAT_RATE = 200;
+const MISI_STALL_RATE = 20;
+const MISI_STALL_YEARS = 50;
+const FAST_RETREAT_RATE = 100;
+const HYSTERESIS_RETREAT_RATE = 50;
+
+/** Model years the warming must have been reversed before retreat counts as irreversible. */
+const HYSTERESIS_WAIT_YEARS = 20;
+
+/** Whether any floating ice at least `minThickness` thick remains. */
+function hasIceShelf(state: ModelState, minThickness: number): boolean {
+  const { is_floating, H } = state;
+  for (let i = 0; i < H.length; i++) {
+    if (is_floating[i] === 1 && H[i] >= minThickness) return true;
+  }
+  return false;
+}
+
+/** True if `type` is not inside its cooldown window; starts a new window when it is ready. */
+function takeCooldown(
+  state: ModelState,
+  type: GameEvent['type'],
+  years: number = EVENT_COOLDOWN_YEARS,
+): boolean {
+  const until = state.event_cooldown_until?.[type];
+  if (until != null && state.year < until) return false;
+  state.event_cooldown_until = {
+    ...state.event_cooldown_until,
+    [type]: state.year + years,
+  };
+  return true;
+}
 
 /**
  * Compute effective dt limited by CFL condition.
@@ -263,11 +314,296 @@ export function initializeModel(config: ScenarioConfig): ModelState {
     }
 
     if (observedSpeed.some(v => v > 0)) {
-      state.C_basal = invertBasalFriction(state, observedSpeed, config.T_atm_base);
+      const drag = invertDragFields(state, observedSpeed, config.T_atm_base);
+      state.C_basal = drag.C_basal;
+      state.lateral_drag = drag.lateral_drag;
     }
   }
 
+  // Without observations to invert, give floating ice the default side-wall
+  // drag: an unconfined 2D shelf transmits no buttressing to the grounding
+  // line, which would make shelf loss dynamically irrelevant.
+  if (!state.lateral_drag) {
+    state.lateral_drag = new Float64Array(nx).fill(config.lateral_drag ?? LATERAL_DRAG_DEFAULT);
+  }
+
+  // Replace the SIA-shaped initial guess with a real BP solution so the
+  // first payload shows actual velocities and step 1 can reuse it.
+  state.u = solveBP(state, config.T_atm_base);
+  state.u_depth_avg = depthAverageVelocity(state.u, nx, nz);
+  state.velocity_stale = false;
+  state.had_shelf = hasIceShelf(state, SHELF_MIN_THICKNESS);
+
   return state;
+}
+
+/**
+ * Forcing for one step on the current geometry: SMB, effective pressure,
+ * velocity (reused from the previous end-of-step solve unless stale), the
+ * CFL-limited step length, basal melt and hydrology.
+ *
+ * @returns The CFL-limited step (years) every process of this step uses.
+ */
+function updateForcing(state: ModelState, config: ScenarioConfig, dt: number): number {
+  const { grid } = state;
+  const { nx, nz } = grid;
+
+  state.smb = computeSMB(state.s, state.params, config.T_atm_base, config.P_snow_base);
+  if (!state.params.enable_hydrology) {
+    state.W.fill(0);
+  }
+  state.N_eff = computeEffectivePressure(state.H, state.W, state.is_floating);
+
+  // The worker marks the velocity stale whenever the user changes parameters.
+  if (state.velocity_stale !== false) {
+    state.u = solveBP(state, config.T_atm_base);
+    state.u_depth_avg = depthAverageVelocity(state.u, nx, nz);
+  }
+
+  let uMax = 0;
+  for (let i = 0; i < nx; i++) {
+    if (state.u_depth_avg[i] > uMax) uMax = state.u_depth_avg[i];
+  }
+  const safeDt = cflLimitedDt(dt, uMax, grid.dx);
+
+  const groundedBasalMelt = computeGroundedBasalMelt(
+    basalVelocity(state.u, nx, nz), state.H, state.N_eff, state.is_floating, state.C_basal,
+  );
+
+  // Hydrology (its effect on sliding enters through N_eff at the end-of-step solve)
+  if (state.params.enable_hydrology) {
+    // Zwally feedback: route a fraction of surface melt (negative SMB) to the bed.
+    const surfaceMelt = new Float64Array(nx);
+    for (let i = 0; i < nx; i++) {
+      surfaceMelt[i] = state.smb[i] < 0 ? -state.smb[i] : 0;
+    }
+    state.W = evolveHydrology(
+      state.W, groundedBasalMelt.waterEq, state.is_floating, grid, state.params, safeDt,
+      surfaceMelt,
+    );
+    state.N_eff = computeEffectivePressure(state.H, state.W, state.is_floating);
+  }
+
+  // Floating ice melts from the ocean; grounded ice from geothermal + frictional heat.
+  state.basal_melt = computeOceanMelt(
+    state.H, state.b, state.is_floating, state.params, config.T_ocean_base, grid.x,
+  );
+  for (let i = 0; i < nx; i++) {
+    state.basal_melt[i] += groundedBasalMelt.iceEq[i];
+  }
+  return safeDt;
+}
+
+/** MICI cliff calving (opt-in); clears the diagnostics when disabled. */
+function updateCliffCalving(state: ModelState, safeDt: number): void {
+  if (!state.params.enable_mici) {
+    state.cliff_height = 0;
+    state.mici_calving_rate = 0;
+    state.is_mici_active = false;
+    return;
+  }
+  const mici = applyCliffCalving(state, safeDt);
+  state.H = mici.H;
+  state.cliff_height = mici.cliff_height;
+  state.mici_calving_rate = mici.mici_calving_rate;
+  state.is_mici_active = mici.is_mici_active;
+}
+
+/**
+ * Advance the geometry by `safeDt`: thickness, calving, grounding line,
+ * surface, end-of-step velocity, volume, sea level and model time.
+ */
+function advanceGeometry(state: ModelState, config: ScenarioConfig, safeDt: number): void {
+  const { grid } = state;
+  const { nx, nz } = grid;
+
+  const H_new = evolveThickness(
+    state.H, state.u_depth_avg, state.smb, state.basal_melt, grid, safeDt,
+  );
+  state.H = applyCalving(H_new, state.is_floating).H;
+  updateCliffCalving(state, safeDt);
+
+  state.prev_gl_position = state.gl_position;
+  const gl = updateGroundingLine(state.H, state.b, grid);
+  state.gl_index = gl.gl_index;
+  state.gl_position = gl.gl_position;
+  state.is_floating = gl.is_floating;
+  state.s = computeSurfaceElevation(state.H, state.b, state.is_floating);
+  state.ice_base = computeIceBase(state.H, state.b, state.is_floating);
+
+  // Re-solve the velocity on the updated geometry so the returned fields
+  // (u, u_depth_avg, gl_flux, gl_velocity) match the new thickness and
+  // grounding line. N_eff and SMB are refreshed first so newly (un)grounded
+  // cells get the right basal condition; the next step reuses this solution.
+  state.N_eff = computeEffectivePressure(state.H, state.W, state.is_floating);
+  state.smb = computeSMB(state.s, state.params, config.T_atm_base, config.P_snow_base);
+  state.u = solveBP(state, config.T_atm_base);
+  state.u_depth_avg = depthAverageVelocity(state.u, nx, nz);
+  state.velocity_stale = false;
+
+  const { volume, volumeAboveFlotation } = computeIceVolume(
+    state.H, state.b, state.is_floating, grid.dx,
+  );
+  state.volume = volume;
+  // Sea level: only grounded ice above flotation contributes.
+  state.sea_level = computeSeaLevelChange(
+    state.initial_volume_above_flotation, volumeAboveFlotation, config,
+  );
+  state.year += safeDt;
+
+  // GL retreat rate (m/yr, positive = retreat), smoothed over a few model
+  // years: one 0.1-yr step of sub-grid GL jitter (tens of metres) would
+  // otherwise read as hundreds of m/yr and trip the MISI / hysteresis detectors.
+  if (safeDt > 0) {
+    const instantRate = (state.prev_gl_position - state.gl_position) / safeDt;
+    const weight = Math.min(1, safeDt / GL_RATE_SMOOTHING_YEARS);
+    state.gl_retreat_rate += weight * (instantRate - state.gl_retreat_rate);
+  }
+}
+
+/**
+ * MISI: fast (smoothed) retreat while the grounding line sits on a
+ * retrograde bed. It ends when the retreat stalls, so a grounding line that
+ * restabilises (e.g. after prompt cooling) is no longer reported unstable.
+ */
+function detectMisi(state: ModelState): GameEvent | null {
+  if (state.is_misi_active) {
+    if (state.gl_retreat_rate >= MISI_STALL_RATE) {
+      state.misi_stalled_since = undefined;
+      return null;
+    }
+    state.misi_stalled_since ??= state.year;
+    if (state.year - state.misi_stalled_since < MISI_STALL_YEARS) return null;
+    state.is_misi_active = false;
+    state.misi_stalled_since = undefined;
+    return {
+      type: 'ice_recovered',
+      message_en: 'The grounding line has stopped retreating: the instability has stalled.',
+      message_zh: '接地线已停止退缩：不稳定性已停滞。',
+      severity: 'info',
+    };
+  }
+  if (state.gl_retreat_rate <= MISI_RETREAT_RATE) return null;
+  const { b, grid, gl_index: glIdx } = state;
+  if (glIdx <= 0 || glIdx >= grid.nx - 1) return null;
+  const dbdx = (b[glIdx + 1] - b[glIdx - 1]) / (2 * grid.dx);
+  if (dbdx <= 0) return null;
+
+  state.is_misi_active = true;
+  state.misi_triggered_year = state.year;
+  return {
+    type: 'misi_triggered',
+    message_en: 'Marine Ice Sheet Instability triggered! The grounding line is retreating on a retrograde slope — a positive feedback that accelerates collapse.',
+    message_zh: '海洋冰盖不稳定性已触发！接地线正在逆坡上退缩——正反馈加速了崩塌。',
+    severity: 'critical',
+  };
+}
+
+/** Recurring warning, rate-limited by the event cooldown. */
+function detectFastRetreat(state: ModelState): GameEvent | null {
+  if (state.gl_retreat_rate <= FAST_RETREAT_RATE || state.is_misi_active) return null;
+  if (!takeCooldown(state, 'gl_retreat_accelerating', FAST_RETREAT_COOLDOWN_YEARS)) return null;
+  return {
+    type: 'gl_retreat_accelerating',
+    message_en: 'The grounding line is retreating rapidly!',
+    message_zh: '接地线正在快速退缩！',
+    severity: 'warning',
+  };
+}
+
+/** Fires once, on the step the last buttressing shelf disappears. */
+function detectShelfCollapse(state: ModelState): GameEvent | null {
+  const shelfExists = hasIceShelf(state, SHELF_MIN_THICKNESS);
+  const justCollapsed = state.had_shelf === true && !shelfExists;
+  state.had_shelf = shelfExists;
+  if (!justCollapsed) return null;
+  return {
+    type: 'shelf_collapsed',
+    message_en: 'The ice shelf has collapsed! The "cork" is gone — ice will flow faster into the ocean.',
+    message_zh: '冰架已崩塌！"瓶塞"消失了——冰将更快涌入海洋。',
+    severity: 'critical',
+  };
+}
+
+function detectMiciEvents(state: ModelState, prevMICIActive: boolean): GameEvent[] {
+  const events: GameEvent[] = [];
+  if (state.is_mici_active && !prevMICIActive) {
+    events.push({
+      type: 'mici_triggered',
+      message_en: 'Marine Ice Cliff Instability activated! The exposed ice cliff is too tall to support itself — structural failure is accelerating calving.',
+      message_zh: '海洋冰崖不稳定性已激活！暴露的冰崖太高无法自撑——结构破坏正在加速崩解。',
+      severity: 'critical',
+    });
+  }
+  if (
+    state.mici_calving_rate > 500 && state.is_mici_active
+    && takeCooldown(state, 'cliff_failure')
+  ) {
+    events.push({
+      type: 'cliff_failure',
+      message_en: `Rapid cliff failure: calving at ${state.mici_calving_rate.toFixed(0)} m/yr!`,
+      message_zh: `冰崖快速崩塌：崩解速率 ${state.mici_calving_rate.toFixed(0)} 米/年！`,
+      severity: 'critical',
+    });
+  }
+  return events;
+}
+
+/**
+ * Hysteresis: after warming, temperatures have been back at or below normal
+ * for HYSTERESIS_WAIT_YEARS, yet the grounding line is still in unstable
+ * retreat. Without prior warming there is nothing to "restore", and right
+ * after a reversal the retreat is still coasting, so neither counts.
+ */
+function detectHysteresis(state: ModelState): GameEvent | null {
+  const { T_atm_delta, T_ocean_delta } = state.params;
+  state.peak_warming = Math.max(state.peak_warming ?? 0, T_atm_delta, T_ocean_delta);
+  const restored = state.peak_warming > 0 && T_atm_delta <= 0 && T_ocean_delta <= 0;
+  if (!restored) {
+    state.climate_restored_year = undefined;
+    return null;
+  }
+  state.climate_restored_year ??= state.year;
+  if (!state.is_misi_active || state.hysteresis_locked) return null;
+  if (state.year - state.climate_restored_year < HYSTERESIS_WAIT_YEARS) return null;
+  if (state.gl_retreat_rate <= HYSTERESIS_RETREAT_RATE) return null;
+
+  state.hysteresis_locked = true;
+  return {
+    type: 'hysteresis_locked',
+    message_en: 'Even with temperatures restored, the ice sheet cannot recover. This is irreversible.',
+    message_zh: '即使恢复温度，冰盖也无法恢复。这是不可逆的。',
+    severity: 'critical',
+  };
+}
+
+/** Announce each new whole metre of sea-level rise from 1 m upward. */
+function detectSeaLevelMilestone(state: ModelState): GameEvent | null {
+  const wholeMetres = Math.floor(state.sea_level);
+  if (wholeMetres < 1 || wholeMetres <= (state.sea_level_alerted_m ?? 0)) return null;
+  state.sea_level_alerted_m = wholeMetres;
+  return {
+    type: 'city_flooded',
+    message_en: `Sea level has risen ${state.sea_level.toFixed(1)}m. Shanghai, Miami, and Tokyo face severe flooding.`,
+    message_zh: `海平面上升了${state.sea_level.toFixed(1)}米。上海、迈阿密和东京面临严重洪水。`,
+    severity: 'critical',
+  };
+}
+
+/**
+ * Game events for the step just taken. Each fires on a threshold crossing
+ * (or at most once per cooldown window), never on every step.
+ */
+export function detectEvents(state: ModelState, prevMICIActive: boolean): GameEvent[] {
+  const candidates = [
+    detectMisi(state),
+    detectFastRetreat(state),
+    detectShelfCollapse(state),
+    ...detectMiciEvents(state, prevMICIActive),
+    detectHysteresis(state),
+    detectSeaLevelMilestone(state),
+  ];
+  return candidates.filter((e): e is GameEvent => e !== null);
 }
 
 /**
@@ -278,216 +614,10 @@ export function stepPhysics(
   config: ScenarioConfig,
   dt: number = DEFAULT_DT,
 ): { state: ModelState; events: GameEvent[] } {
-  const { grid } = state;
-  const { nx, nz } = grid;
-  const events: GameEvent[] = [];
-
-  // 1. Update user-dependent fields
-  // SMB
-  state.smb = computeSMB(state.s, state.params, config.T_atm_base, config.P_snow_base);
-
-  // Effective pressure on the current geometry before updating hydrology.
-  if (!state.params.enable_hydrology) {
-    state.W.fill(0);
-  }
-  state.N_eff = computeEffectivePressure(state.H, state.W, state.is_floating);
-
-  const u_base = basalVelocity(state.u, nx, nz);
-  const groundedBasalMelt = computeGroundedBasalMelt(
-    u_base, state.H, state.N_eff, state.is_floating, state.C_basal,
-  );
-
-  // Hydrology
-  if (state.params.enable_hydrology) {
-    // Zwally feedback: route a fraction of surface melt (negative SMB) to the
-    // bed as an additional water source.
-    const surfaceMelt = new Float64Array(nx);
-    for (let i = 0; i < nx; i++) {
-      surfaceMelt[i] = state.smb[i] < 0 ? -state.smb[i] : 0;
-    }
-    state.W = evolveHydrology(
-      state.W, groundedBasalMelt.waterEq, state.is_floating, grid, state.params, dt,
-      surfaceMelt,
-    );
-    state.N_eff = computeEffectivePressure(state.H, state.W, state.is_floating);
-  } else {
-    state.N_eff = computeEffectivePressure(state.H, state.W, state.is_floating);
-  }
-
-  // Total basal melt for the thickness equation:
-  // floating ice uses ocean melt, grounded ice uses geothermal + frictional melt.
-  state.basal_melt = computeOceanMelt(
-    state.H, state.b, state.is_floating, state.params,
-    config.T_ocean_base, grid.x,
-  );
-  for (let i = 0; i < nx; i++) {
-    state.basal_melt[i] += groundedBasalMelt.iceEq[i];
-  }
-
-  // 2. Solve BP velocity
-  state.u = solveBP(state, config.T_atm_base);
-
-  // Compute depth-averaged velocity
-  state.u_depth_avg = depthAverageVelocity(state.u, nx, nz);
-
-  // 3. Evolve ice thickness with CFL-limited dt
-  let uMax = 0;
-  for (let i = 0; i < nx; i++) {
-    if (state.u_depth_avg[i] > uMax) uMax = state.u_depth_avg[i];
-  }
-  const safeDt = cflLimitedDt(dt, uMax, grid.dx);
-
-  const H_new = evolveThickness(
-    state.H, state.u_depth_avg, state.smb, state.basal_melt, grid, safeDt,
-  );
-
-  // 4. Apply calving
-  const { H: H_calved, calved } = applyCalving(H_new, state.is_floating);
-  state.H = H_calved;
-
-  // 4b. Apply MICI cliff calving (opt-in)
   const prevMICIActive = state.is_mici_active;
-  if (state.params.enable_mici) {
-    const mici = applyCliffCalving(state, safeDt);
-    state.H = mici.H;
-    state.cliff_height = mici.cliff_height;
-    state.mici_calving_rate = mici.mici_calving_rate;
-    state.is_mici_active = mici.is_mici_active;
-  } else {
-    state.cliff_height = 0;
-    state.mici_calving_rate = 0;
-    state.is_mici_active = false;
-  }
-
-  // 5. Update grounding line
-  state.prev_gl_position = state.gl_position;
-  const gl = updateGroundingLine(state.H, state.b, grid);
-  state.gl_index = gl.gl_index;
-  state.gl_position = gl.gl_position;
-  state.is_floating = gl.is_floating;
-
-  // 6. Update surface elevation and ice base
-  state.s = computeSurfaceElevation(state.H, state.b, state.is_floating);
-  state.ice_base = computeIceBase(state.H, state.b, state.is_floating);
-
-  // 6b. Re-solve BP velocity on the updated geometry so that returned
-  //     velocity fields (u, u_depth_avg, gl_flux, gl_velocity) are
-  //     consistent with the current thickness and grounding line.
-  state.u = solveBP(state, config.T_atm_base);
-  state.u_depth_avg = depthAverageVelocity(state.u, nx, nz);
-
-  // 7. Update volume and sea level
-  const { volume, volumeAboveFlotation } = computeIceVolume(
-    state.H, state.b, state.is_floating, grid.dx,
-  );
-  state.volume = volume;
-
-  // Sea level: only grounded ice above flotation contributes.
-  state.sea_level = computeSeaLevelChange(
-    state.initial_volume_above_flotation,
-    volumeAboveFlotation,
-    config,
-  );
-
-  // 8. Advance time (use CFL-limited dt)
-  state.year += safeDt;
-
-  // 9. Detect events
-  // GL retreat rate
-  state.gl_retreat_rate = safeDt > 0
-    ? (state.prev_gl_position - state.gl_position) / safeDt
-    : 0; // m/yr (positive = retreat)
-
-  // MISI detection: accelerating retreat on retrograde slope
-  if (state.gl_retreat_rate > 500 && !state.is_misi_active) {
-    // Check if GL is on retrograde slope
-    const glIdx = state.gl_index;
-    if (glIdx > 0 && glIdx < nx - 1) {
-      const dbdx = (state.b[glIdx + 1] - state.b[glIdx - 1]) / (2 * grid.dx);
-      if (dbdx > 0) {
-        // Retrograde slope + fast retreat = MISI
-        state.is_misi_active = true;
-        state.misi_triggered_year = state.year;
-        events.push({
-          type: 'misi_triggered',
-          message_en: 'Marine Ice Sheet Instability triggered! The grounding line is retreating on a retrograde slope — a positive feedback that accelerates collapse.',
-          message_zh: '海洋冰盖不稳定性已触发！接地线正在逆坡上退缩——正反馈加速了崩塌。',
-          severity: 'critical',
-        });
-      }
-    }
-  }
-
-  // GL accelerating retreat
-  if (state.gl_retreat_rate > 200 && !state.is_misi_active) {
-    events.push({
-      type: 'gl_retreat_accelerating',
-      message_en: 'The grounding line is retreating rapidly!',
-      message_zh: '接地线正在快速退缩！',
-      severity: 'warning',
-    });
-  }
-
-  // Shelf collapse detection
-  let shelfExists = false;
-  for (let i = 0; i < nx; i++) {
-    if (state.is_floating[i] === 1 && state.H[i] > 50) {
-      shelfExists = true;
-      break;
-    }
-  }
-  if (calved && !shelfExists) {
-    events.push({
-      type: 'shelf_collapsed',
-      message_en: 'The ice shelf has collapsed! The "cork" is gone — ice will flow faster into the ocean.',
-      message_zh: '冰架已崩塌！"瓶塞"消失了——冰将更快涌入海洋。',
-      severity: 'critical',
-    });
-  }
-
-  // MICI detection
-  if (state.is_mici_active && !prevMICIActive) {
-    events.push({
-      type: 'mici_triggered',
-      message_en: 'Marine Ice Cliff Instability activated! The exposed ice cliff is too tall to support itself — structural failure is accelerating calving.',
-      message_zh: '海洋冰崖不稳定性已激活！暴露的冰崖太高无法自撑——结构破坏正在加速崩解。',
-      severity: 'critical',
-    });
-  }
-
-  if (state.mici_calving_rate > 500 && state.is_mici_active) {
-    events.push({
-      type: 'cliff_failure',
-      message_en: `Rapid cliff failure: calving at ${state.mici_calving_rate.toFixed(0)} m/yr!`,
-      message_zh: `冰崖快速崩塌：崩解速率 ${state.mici_calving_rate.toFixed(0)} 米/年！`,
-      severity: 'critical',
-    });
-  }
-
-  // Hysteresis detection: if MISI was triggered and user tries to reverse
-  if (state.is_misi_active && state.params.T_atm_delta <= 0 && state.params.T_ocean_delta <= 0) {
-    if (state.gl_retreat_rate > 100 && !state.hysteresis_locked) {
-      state.hysteresis_locked = true;
-      events.push({
-        type: 'hysteresis_locked',
-        message_en: 'Even with temperatures restored, the ice sheet cannot recover. This is irreversible.',
-        message_zh: '即使恢复温度，冰盖也无法恢复。这是不可逆的。',
-        severity: 'critical',
-      });
-    }
-  }
-
-  // Sea level city flooding
-  if (state.sea_level > 1.0) {
-    events.push({
-      type: 'city_flooded',
-      message_en: `Sea level has risen ${state.sea_level.toFixed(1)}m. Shanghai, Miami, and Tokyo face severe flooding.`,
-      message_zh: `海平面上升了${state.sea_level.toFixed(1)}米。上海、迈阿密和东京面临严重洪水。`,
-      severity: 'critical',
-    });
-  }
-
-  return { state, events };
+  const safeDt = updateForcing(state, config, dt);
+  advanceGeometry(state, config, safeDt);
+  return { state, events: detectEvents(state, prevMICIActive) };
 }
 
 /**
@@ -512,7 +642,8 @@ export function extractStatePayload(state: ModelState): PhysicsStatePayload {
     volume: state.volume,
     mass_change_gt: computeMassChangeGt(state.volume, state.initial_volume),
     sea_level: state.sea_level,
-    shelf_exists: state.is_floating.some((v: number) => v === 1),
+    // Ice-free cells are flagged floating (open ocean), so test thickness too.
+    shelf_exists: hasIceShelf(state, H_MIN),
     water_pressure: new Float64Array(state.W),
     is_misi_active: state.is_misi_active,
     cliff_height: state.cliff_height,

@@ -3,11 +3,18 @@
  * Provides multiline text measurement & rendering without DOM reflow.
  */
 
-import { prepareWithSegments, layoutWithLines, type PreparedTextWithSegments, type LayoutLine } from '@chenglou/pretext';
+import {
+  clearCache as clearPretextCaches,
+  prepareWithSegments,
+  layoutWithLines,
+  type PreparedTextWithSegments,
+  type LayoutLine,
+} from '@chenglou/pretext';
 
 // ── Prepared text cache ──
 // prepare() is expensive (~19ms for a batch); layout() is cheap (~0.09ms).
-// Cache by text+font composite key; clear on language change.
+// Cache by text+font composite key; clear on language change and whenever
+// web fonts finish loading (measurements taken with a fallback font are wrong).
 const preparedCache = new Map<string, PreparedTextWithSegments>();
 
 function getPrepared(text: string, font: string): PreparedTextWithSegments {
@@ -20,9 +27,34 @@ function getPrepared(text: string, font: string): PreparedTextWithSegments {
   return p;
 }
 
-/** Clear the prepared text cache (call on language change). */
+/**
+ * Clear the prepared text cache and pretext's per-font glyph-width caches
+ * (call on language change or after fonts load).
+ */
 export function clearPreparedCache(): void {
   preparedCache.clear();
+  clearPretextCaches();
+}
+
+/**
+ * Re-measure text once web fonts are ready (and after any later font load),
+ * so layouts cached while "Nunito" / "IBM Plex Mono" were still loading are
+ * not kept forever. Returns an unsubscribe function.
+ */
+export function invalidateTextLayoutOnFontLoad(): () => void {
+  const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+  if (!fonts) return () => undefined;
+
+  let active = true;
+  const invalidate = () => {
+    if (active) clearPreparedCache();
+  };
+  fonts.ready.then(invalidate, () => undefined);
+  fonts.addEventListener('loadingdone', invalidate);
+  return () => {
+    active = false;
+    fonts.removeEventListener('loadingdone', invalidate);
+  };
 }
 
 // ── Multiline text drawing ──
@@ -124,6 +156,60 @@ export interface TooltipPanelResult {
   height: number;
 }
 
+/** The subset of panel options that determines its size. */
+export type TooltipPanelLayoutOptions = Pick<
+  TooltipPanelOptions,
+  'maxWidth' | 'padding' | 'lineHeight' | 'title' | 'titleFont' | 'body' | 'bodyFont' | 'dataRows'
+>;
+
+interface TooltipPanelLayout {
+  readonly contentWidth: number;
+  readonly titleHeight: number;
+  readonly bodyHeight: number;
+  readonly dataRowHeight: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+function layoutTooltipPanel(opts: TooltipPanelLayoutOptions): TooltipPanelLayout {
+  const { padding, maxWidth, lineHeight } = opts;
+  const contentWidth = maxWidth - padding * 2;
+  let totalContentHeight = 0;
+
+  // Title
+  let titleHeight = 0;
+  if (opts.title) {
+    titleHeight = measureMultilineText(opts.title, opts.titleFont, contentWidth, lineHeight + 2).height;
+    totalContentHeight += titleHeight + 4; // gap after title
+  }
+
+  // Body
+  const bodyHeight = measureMultilineText(opts.body, opts.bodyFont, contentWidth, lineHeight).height;
+  totalContentHeight += bodyHeight;
+
+  // Data rows
+  const dataRowHeight = lineHeight + 1;
+  if (opts.dataRows && opts.dataRows.length > 0) {
+    totalContentHeight += 6; // gap before data
+    totalContentHeight += opts.dataRows.length * dataRowHeight;
+  }
+
+  return {
+    contentWidth,
+    titleHeight,
+    bodyHeight,
+    dataRowHeight,
+    width: maxWidth,
+    height: totalContentHeight + padding * 2,
+  };
+}
+
+/** Size a tooltip panel exactly as drawTooltipPanel will draw it (for placement). */
+export function measureTooltipPanel(opts: TooltipPanelLayoutOptions): TooltipPanelResult {
+  const { width, height } = layoutTooltipPanel(opts);
+  return { width, height };
+}
+
 /**
  * Draw a rounded-rect tooltip panel with title, body, and optional data rows.
  * All text is measured and laid out by pretext.
@@ -132,34 +218,13 @@ export function drawTooltipPanel(
   ctx: CanvasRenderingContext2D,
   opts: TooltipPanelOptions,
 ): TooltipPanelResult {
-  const { padding, maxWidth, lineHeight } = opts;
-  const contentWidth = maxWidth - padding * 2;
-
-  // ── Measure all text blocks ──
-  let totalContentHeight = 0;
-
-  // Title
-  let titleHeight = 0;
-  if (opts.title) {
-    const m = measureMultilineText(opts.title, opts.titleFont, contentWidth, lineHeight + 2);
-    titleHeight = m.height;
-    totalContentHeight += titleHeight + 4; // gap after title
-  }
-
-  // Body
-  const bodyMeasure = measureMultilineText(opts.body, opts.bodyFont, contentWidth, lineHeight);
-  totalContentHeight += bodyMeasure.height;
-
-  // Data rows
+  const { padding, lineHeight } = opts;
+  const layout = layoutTooltipPanel(opts);
+  const { contentWidth, titleHeight, dataRowHeight } = layout;
+  const bodyMeasure = { height: layout.bodyHeight };
   const dataFont = opts.dataFont ?? '11px monospace';
-  const dataRowHeight = lineHeight + 1;
-  if (opts.dataRows && opts.dataRows.length > 0) {
-    totalContentHeight += 6; // gap before data
-    totalContentHeight += opts.dataRows.length * dataRowHeight;
-  }
-
-  const panelHeight = totalContentHeight + padding * 2;
-  const panelWidth = maxWidth;
+  const panelHeight = layout.height;
+  const panelWidth = layout.width;
 
   // ── Draw background ──
   const { x, y, borderRadius } = opts;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { invertBasalFriction } from '../../src/engine/inversion';
-import { C_BASAL_MIN, C_BASAL_MAX, RHO_ICE, RHO_WATER } from '../../src/engine/constants';
+import { C_BASAL_MIN, C_BASAL_MAX, C_SLIDING, RHO_ICE, RHO_WATER } from '../../src/engine/constants';
 import type { ModelState, ModelGrid } from '../../src/engine/types';
 
 /** Helper: create a minimal model state for inversion tests. */
@@ -102,7 +102,7 @@ describe('invertBasalFriction', () => {
     expect(C.length).toBe(nx);
   });
 
-  it('sets C = 0 for floating nodes', () => {
+  it('gives floating nodes the nearest grounded C so re-grounded ice keeps friction', () => {
     const nx = 10;
     const is_floating = new Uint8Array(nx);
     is_floating[8] = 1;
@@ -112,8 +112,54 @@ describe('invertBasalFriction', () => {
 
     const C = invertBasalFriction(state, u_obs, -20);
 
-    expect(C[8]).toBe(0);
-    expect(C[9]).toBe(0);
+    expect(C[7]).toBeGreaterThan(0);
+    expect(C[8]).toBe(C[7]);
+    expect(C[9]).toBe(C[7]);
+  });
+
+  /**
+   * Dry-bed slab (N = overburden), 5e-3 surface slope: ~5–10 m/yr at C_SLIDING
+   * upstream. It ends in a 1.3 km grounded marine cliff whose margin stress
+   * drives very fast flow over the last few nodes, so assertions use i ≤ 10.
+   */
+  function drySlab(nx: number): ModelState {
+    const state = createTestState({ nx });
+    for (let i = 0; i < nx; i++) {
+      state.H[i] = 1500 - 10 * i;
+      state.s[i] = state.b[i] + state.H[i];
+      state.N_eff[i] = RHO_ICE * 9.81 * state.H[i];
+    }
+    return state;
+  }
+
+  it('lowers C where the model is too slow and then matches the observed speed', () => {
+    const nx = 20;
+    const state = drySlab(nx);
+    const u_obs = new Float64Array(nx).fill(200);
+
+    const C = invertBasalFriction(state, u_obs, -20);
+
+    for (let i = 2; i <= 10; i++) {
+      expect(C[i]).toBeLessThan(C_SLIDING);
+    }
+    // state.u holds the last forward solve; upstream surface speed ≈ u_obs
+    const nz = state.grid.nz;
+    for (const i of [4, 6, 8]) {
+      expect(state.u[i * nz + nz - 1]).toBeGreaterThan(170);
+      expect(state.u[i * nz + nz - 1]).toBeLessThan(230);
+    }
+  });
+
+  it('raises C where the model is too fast', () => {
+    const nx = 20;
+    const state = drySlab(nx);
+    const u_obs = new Float64Array(nx).fill(2);
+
+    const C = invertBasalFriction(state, u_obs, -20);
+
+    for (let i = 2; i <= 10; i++) {
+      expect(C[i]).toBeGreaterThan(C_SLIDING);
+    }
   });
 
   it('keeps C within physical bounds [C_MIN, C_MAX]', () => {

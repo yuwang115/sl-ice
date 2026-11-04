@@ -2,9 +2,12 @@
  * Real World region selector — pick an Antarctic flowline to simulate.
  */
 
-import { useGameStore } from '../../store/game-store';
+import { useGameStore, type LocalizedMessage } from '../../store/game-store';
 import { usePhysicsStore } from '../../store/physics-store';
 import { useUIStore } from '../../store/ui-store';
+import { fetchScenarioConfig } from '../../store/scenario-config';
+import { useAbortableLoad } from '../../hooks/useAbortableLoad';
+import ErrorNotice from '../ui/ErrorNotice';
 
 interface RegionDef {
   id: string;
@@ -64,22 +67,38 @@ const variantStyles: Record<string, { bg: string; border: string }> = {
   teal: { bg: 'var(--card-accent-teal)', border: 'var(--card-border-teal)' },
 };
 
+function regionLoadError(region: RegionDef): LocalizedMessage {
+  return {
+    en: `Could not load ${region.name_en}. Check your connection and try again.`,
+    zh: `无法加载${region.name_zh}。请检查网络连接后重试。`,
+  };
+}
+
+/** Fetch the region's scenario and start it (unless the player left real-world mode meanwhile). */
+async function startRegion(region: RegionDef, signal: AbortSignal): Promise<void> {
+  const config = await fetchScenarioConfig(region.scenario, { signal });
+  signal.throwIfAborted();
+  if (useGameStore.getState().mode !== 'real_world') return;
+  usePhysicsStore.getState().loadScenario(config);
+  const game = useGameStore.getState();
+  game.selectRegion(region.id);
+  game.startSimulation();
+}
+
 export default function RealWorldSelector() {
-  const { setMode, selectRegion, setRunning } = useGameStore();
-  const { loadScenario } = usePhysicsStore();
+  const setMode = useGameStore((s) => s.setMode);
+  const loadError = useGameStore((s) => s.loadError);
+  const setLoadError = useGameStore((s) => s.setLoadError);
   const language = useUIStore((s) => s.language);
   const isZh = language === 'zh';
+  const { pendingKey: loadingRegionId, run } = useAbortableLoad<string>();
 
-  const handleSelect = async (region: RegionDef) => {
-    try {
-      const resp = await fetch(`/data/scenarios/${region.scenario}.json`);
-      const config = await resp.json();
-      loadScenario(config);
-      selectRegion(region.id);
-      setRunning(true);
-    } catch (err) {
+  const handleSelect = (region: RegionDef) => {
+    setLoadError(null);
+    void run(region.id, (signal) => startRegion(region, signal), (err) => {
       console.error('Failed to load real-world scenario:', err);
-    }
+      setLoadError(regionLoadError(region));
+    });
   };
 
   return (
@@ -100,6 +119,8 @@ export default function RealWorldSelector() {
             <button
               key={region.id}
               onClick={() => handleSelect(region)}
+              disabled={loadingRegionId !== null}
+              aria-busy={loadingRegionId === region.id}
               className="glass-card group text-left p-5"
               style={{
                 background: vs.bg,
@@ -119,15 +140,25 @@ export default function RealWorldSelector() {
                 className="inline-flex items-center gap-1.5 font-data text-[11px] px-2 py-0.5 rounded-full"
                 style={{ background: 'var(--badge-bg)', border: '1px solid var(--badge-border)', color: 'var(--badge-text)' }}
               >
-                {'\u223c'} {region.sea_level_m} m SLE
+                {loadingRegionId === region.id
+                  ? (isZh ? '加载中…' : 'Loading…')
+                  : <>{'\u223c'} {region.sea_level_m} m SLE</>}
               </div>
             </button>
           );
         })}
       </div>
 
+      {loadError && (
+        <ErrorNotice
+          message={loadError}
+          onDismiss={() => setLoadError(null)}
+          className="w-full max-w-4xl mt-6"
+        />
+      )}
+
       <button
-        onClick={() => setMode('menu')}
+        onClick={() => setMode('explorer')}
         className="mt-10 text-sm transition-colors"
         style={{ color: 'var(--text-muted)' }}
         onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}

@@ -1,6 +1,7 @@
 /**
  * Color mapping functions for terrain rendering.
  * Ported from 3D-ICE explorer to produce identical visual output.
+ * Used by the geometry worker (the only runtime caller) and unit tests.
  */
 
 import {
@@ -94,6 +95,14 @@ export function iceColor(thicknessMeters: number, maskValue: number): RGB {
   const t = clamp01(thicknessMeters / ICE_THICKNESS_REFERENCE);
   const grounded = lerpColor([0.72, 0.84, 0.95], [0.97, 0.99, 1.0], t);
   const floating = lerpColor([0.58, 0.78, 0.93], [0.87, 0.95, 1.0], t);
+  return maskValue === MASK_FLOATING ? floating : grounded;
+}
+
+/** Ice base (underside) color — darker blue tones than the top surface. */
+export function iceBottomColor(thicknessMeters: number, maskValue: number): RGB {
+  const t = clamp01(thicknessMeters / ICE_THICKNESS_REFERENCE);
+  const grounded = lerpColor([0.22, 0.42, 0.58], [0.48, 0.66, 0.78], t);
+  const floating = lerpColor([0.14, 0.34, 0.56], [0.40, 0.61, 0.79], t);
   return maskValue === MASK_FLOATING ? floating : grounded;
 }
 
