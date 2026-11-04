@@ -222,7 +222,7 @@ def epsg3031_to_lonlat(x: float, y: float) -> tuple[float, float]:
         if abs(updated - phi) < 1e-12:
             break
         phi = updated
-    lam = math.atan2(x, -y)
+    lam = math.atan2(x, y)  # EPSG:3031: x = rho*sin(lam), y = rho*cos(lam)
     return (lam * RAD, -phi * RAD)
 
 

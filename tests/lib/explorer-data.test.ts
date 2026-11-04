@@ -19,7 +19,7 @@ function catalogEntry(id: string) {
     basin: 'Thwaites',
     location_en: '',
     location_zh: '',
-    path_lonlat: [[-77.6, -79.5]],
+    path_lonlat: [[-102.4, -79.5]],
     key_facts_en: [],
     key_facts_zh: [],
   };

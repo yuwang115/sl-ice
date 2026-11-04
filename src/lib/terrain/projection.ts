@@ -10,25 +10,16 @@ import {
   FLOWLINE_SURFACE_OFFSET_M,
 } from './constants';
 
-// ── EPSG:3031 Projection — longitude convention (read before changing) ──
+// ── EPSG:3031 Projection ─────────────────────────────────────────────
 //
-// True EPSG:3031 (south polar stereographic, λ0 = 0°, φts = −71°) is
-//     x = ρ·sin λ,   y = +ρ·cos λ.
-// lonLatToPS() returns y = −ρ·cos λ instead (the north-polar sign), i.e. it
-// mirrors points across the x axis. The flowline catalog and scenario files
-// were generated with the matching mirrored inverse, λ' = atan2(x, −y)
-// (scripts/generate-antarctica-flowlines.py, scripts/extract-flowlines.mjs),
-// so every stored longitude is λ' = 180° − λ_true (wrapped); latitudes are
-// unaffected. Because sin(180° − λ) = sin λ and −cos(180° − λ) = cos λ,
-// lonLatToPS(λ', φ) still lands on the true EPSG:3031 grid position, so 3D
-// placement and profile sampling are correct — but the stored longitudes are
-// not geographic longitudes (Thwaites is stored as ≈ −77.6°, true ≈ −102.4°).
-//
-// Fixing the sign here requires transforming every stored longitude in the
-// same change (λ_true = 180° − λ', wrapped to (−180°, 180°]) and fixing both
-// generator scripts; changing only one side misplaces every flowline.
-//
-//   t = ρ·TC / (A·MC)   (conformal latitude parameter, as in the scripts)
+// South polar stereographic on WGS84, central meridian λ0 = 0°, true scale
+// at φts = −71°:
+//     x = ρ·sin λ,   y = ρ·cos λ,   ρ = A·MC·t / TC
+// so the prime meridian points along +y, 90°E along +x and 180° along −y.
+// t is the conformal latitude parameter of |φ|; MC and TC are the scale
+// factor and t at the standard parallel. The generator scripts invert with
+// λ = atan2(x, y), so catalog, scenario and outline longitudes are
+// geographic longitudes.
 
 const DEG = Math.PI / 180;
 const E = WGS84_E;
@@ -44,12 +35,8 @@ const TC =
   Math.pow((1 - E * sinPhiTS) / (1 + E * sinPhiTS), E / 2);
 
 /**
- * Convert a catalog longitude/latitude pair to EPSG:3031 meters.
- *
- * `lon` must use the catalog's mirrored convention (λ' = 180° − λ_true, see
- * the note above); for such input the result is the true EPSG:3031 (x, y)
- * that indexes the BedMachine grid. Feeding a geographic longitude instead
- * returns the point mirrored across the x axis.
+ * Convert a geographic longitude/latitude (degrees) to EPSG:3031 meters, the
+ * (x, y) that indexes the BedMachine grid.
  */
 export function lonLatToPS(lon: number, lat: number): { x: number; y: number } {
   const phi = Math.abs(lat) * DEG;       // absolute latitude in radians
@@ -65,7 +52,7 @@ export function lonLatToPS(lon: number, lat: number): { x: number; y: number } {
 
   return {
     x: rho * Math.sin(lambda),
-    y: -rho * Math.cos(lambda),
+    y: rho * Math.cos(lambda),
   };
 }
 

@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import type { FlowlineGeometry } from '../../src/engine/types';
 import { interpolateGrid, lonLatToPS, psToGrid, type GridParams } from '../../src/lib/terrain/projection';
 
 const nx = 3;
@@ -39,31 +42,89 @@ describe('interpolateGrid', () => {
   });
 });
 
-describe('lonLatToPS (catalog longitude convention)', () => {
-  // First point of thwaites-flowline-01: true EPSG:3031 grid coordinates and
-  // the stored (mirrored) longitude / latitude from the scenario file.
-  const x = -1117339.0;
-  const y = -244893.8;
-  const storedLon = -77.63763;
-  const lat = -79.50058;
+describe('lonLatToPS (EPSG:3031)', () => {
+  // Reference coordinates from PROJ (GDAL 3.3.2 gdaltransform, EPSG:4326 → EPSG:3031).
+  const RHO_71S = 2_082_760.109; // ρ on the standard parallel, where the scale is true
 
-  it('maps a stored catalog lon/lat onto the true EPSG:3031 grid position', () => {
-    const ps = lonLatToPS(storedLon, lat);
-    expect(Math.abs(ps.x - x)).toBeLessThan(25);
-    expect(Math.abs(ps.y - y)).toBeLessThan(25);
+  it('puts the prime meridian on +y and 90°E on +x', () => {
+    const greenwich = lonLatToPS(0, -71);
+    const east = lonLatToPS(90, -71);
+    expect(greenwich.x).toBeCloseTo(0, 6);
+    expect(greenwich.y).toBeCloseTo(RHO_71S, 2);
+    expect(east.x).toBeCloseTo(RHO_71S, 2);
+    expect(east.y).toBeCloseTo(0, 6);
   });
 
-  it('documents that stored longitudes are mirrored (180° − true longitude)', () => {
-    const trueLon = (Math.atan2(x, y) * 180) / Math.PI; // EPSG:3031: λ = atan2(x, y)
-    expect(trueLon).toBeCloseTo(-102.36, 1);
-    const mirrored = ((180 - trueLon + 540) % 360) - 180;
-    expect(mirrored).toBeCloseTo(storedLon, 3);
+  it('projects Lake Vostok (106.8°E, 77.5°S) where PROJ does', () => {
+    const vostok = lonLatToPS(106.8, -77.5);
+    expect(vostok.x).toBeCloseTo(1_305_161.978, 2);
+    expect(vostok.y).toBeCloseTo(-394_051.634, 2);
   });
 
   it('feeds psToGrid with BedMachine grid indices', () => {
+    // First point of thwaites-flowline-01 in EPSG:3031 meters
+    const x = -1117339.0;
+    const y = -244893.8;
     const grid: GridParams = { x0_m: -3_333_000, y0_m: 3_333_000, dx_m: 10_000, dy_m: -10_000, nx: 667, ny: 667 };
     const { col, row } = psToGrid(x, y, grid);
     expect(col).toBeCloseTo((x + 3_333_000) / 10_000);
     expect(row).toBeCloseTo((y - 3_333_000) / -10_000);
+  });
+});
+
+interface CatalogEntry {
+  id: string;
+  scenario: string;
+  seed_lonlat: [number, number];
+  path_lonlat: [number, number][];
+}
+
+function readData<T>(path: string): T {
+  return JSON.parse(readFileSync(resolve(process.cwd(), 'public/data', path), 'utf8')) as T;
+}
+
+/** Distance (m) from a projected lon/lat to the nearest stored geometry point. */
+function distanceToGeometry([lon, lat]: readonly [number, number], geometry: FlowlineGeometry): number {
+  const { x, y } = lonLatToPS(lon, lat);
+  return Math.min(...geometry.points.map((p) => Math.hypot(x - p.x_m, y - p.y_m)));
+}
+
+describe('stored flowline coordinates', () => {
+  const flowlines = readData<CatalogEntry[]>('flowline-catalog.json').map((entry) => ({
+    entry,
+    geometry: readData<{ geometry: FlowlineGeometry }>(`scenarios/${entry.scenario}.json`).geometry,
+  }));
+
+  it('covers all 100 catalog flowlines', () => {
+    expect(flowlines).toHaveLength(100);
+  });
+
+  it('projects every scenario point onto its stored EPSG:3031 x/y', () => {
+    // lon/lat are stored to 1e-5° and x/y to 0.1 m, so under 1 m is exact agreement.
+    let worst = 0;
+    for (const { geometry } of flowlines) {
+      for (const p of geometry.points) {
+        const { x, y } = lonLatToPS(p.lon, p.lat);
+        worst = Math.max(worst, Math.hypot(x - p.x_m, y - p.y_m));
+      }
+    }
+    expect(worst).toBeLessThan(1);
+  });
+
+  it('puts every catalog path point on its flowline', () => {
+    // path_lonlat is rounded to 1e-3°, i.e. up to ~60 m on the ground.
+    for (const { entry, geometry } of flowlines) {
+      const worst = Math.max(...entry.path_lonlat.map((q) => distanceToGeometry(q, geometry)));
+      expect(worst, entry.id).toBeLessThan(100);
+    }
+  });
+
+  it('puts every catalog seed on its flowline', () => {
+    // The seed lies on the traced line, so within one sample spacing of a stored point.
+    for (const { entry, geometry } of flowlines) {
+      expect(distanceToGeometry(entry.seed_lonlat, geometry), entry.id).toBeLessThanOrEqual(
+        geometry.spacing_km * 1000,
+      );
+    }
   });
 });

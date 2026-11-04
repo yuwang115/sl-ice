@@ -47,7 +47,7 @@ function epsg3031ToLonLat(x, y) {
     if (Math.abs(next - phi) < 1e-12) break;
     phi = next;
   }
-  const lambda = Math.atan2(x, -y);
+  const lambda = Math.atan2(x, y); // EPSG:3031: x = ρ·sin λ, y = ρ·cos λ
   return [lambda * RAD, -phi * RAD];
 }
 
