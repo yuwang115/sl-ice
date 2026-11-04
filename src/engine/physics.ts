@@ -400,6 +400,7 @@ function updateCliffCalving(state: ModelState, safeDt: number): void {
     state.cliff_height = 0;
     state.mici_calving_rate = 0;
     state.is_mici_active = false;
+    state.mici_pending_retreat = 0;
     return;
   }
   const mici = applyCliffCalving(state, safeDt);
@@ -407,6 +408,7 @@ function updateCliffCalving(state: ModelState, safeDt: number): void {
   state.cliff_height = mici.cliff_height;
   state.mici_calving_rate = mici.mici_calving_rate;
   state.is_mici_active = mici.is_mici_active;
+  state.mici_pending_retreat = mici.pending_retreat;
 }
 
 /**
@@ -511,12 +513,15 @@ function detectFastRetreat(state: ModelState): GameEvent | null {
   };
 }
 
-/** Fires once, on the step the last buttressing shelf disappears. */
+/**
+ * Fires on the step the last buttressing shelf disappears; a shelf that
+ * regrows and breaks up again is announced at most once per cooldown.
+ */
 function detectShelfCollapse(state: ModelState): GameEvent | null {
   const shelfExists = hasIceShelf(state, SHELF_MIN_THICKNESS);
   const justCollapsed = state.had_shelf === true && !shelfExists;
   state.had_shelf = shelfExists;
-  if (!justCollapsed) return null;
+  if (!justCollapsed || !takeCooldown(state, 'shelf_collapsed')) return null;
   return {
     type: 'shelf_collapsed',
     message_en: 'The ice shelf has collapsed! The "cork" is gone — ice will flow faster into the ocean.',
@@ -527,7 +532,7 @@ function detectShelfCollapse(state: ModelState): GameEvent | null {
 
 function detectMiciEvents(state: ModelState, prevMICIActive: boolean): GameEvent[] {
   const events: GameEvent[] = [];
-  if (state.is_mici_active && !prevMICIActive) {
+  if (state.is_mici_active && !prevMICIActive && takeCooldown(state, 'mici_triggered')) {
     events.push({
       type: 'mici_triggered',
       message_en: 'Marine Ice Cliff Instability activated! The exposed ice cliff is too tall to support itself — structural failure is accelerating calving.',

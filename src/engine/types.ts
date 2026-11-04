@@ -214,6 +214,7 @@ export interface ModelState {
   cliff_height: number;           // Current freeboard at calving front (m)
   mici_calving_rate: number;      // Current MICI calving rate (m/yr)
   is_mici_active: boolean;        // Whether MICI is currently active
+  mici_pending_retreat?: number;  // Calved distance (m) short of a whole grid cell
 
   // Ice volume tracking
   initial_volume: number;    // km³

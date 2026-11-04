@@ -125,6 +125,26 @@ describe('parameters', () => {
     expect(game().params).toEqual(DEFAULT_PARAMS);
   });
 
+  it('keeps the physics a challenge is built around switched on during the attempt', () => {
+    game().resetParams({ enable_mici: true, T_ocean_delta: 2 });
+    beginChallenge(8);
+    game().setParam('enable_mici', false);
+    game().setParam('mici_sensitivity', 0.5); // tuning it is still allowed
+    expect(game().params.enable_mici).toBe(true);
+    expect(game().params.mici_sensitivity).toBe(0.5);
+
+    game().resetParams({ enable_hydrology: true, drain_efficiency: 0.2 });
+    beginChallenge(4);
+    game().setParam('enable_hydrology', false);
+    expect(game().params.enable_hydrology).toBe(true);
+
+    // Once the attempt is over the switch is free again.
+    game().evaluateChallenge(physicsState({ year: 600, volume: 500 }));
+    expect(game().challengeResult).not.toBeNull();
+    game().setParam('enable_hydrology', false);
+    expect(game().params.enable_hydrology).toBe(false);
+  });
+
   it('starts free-play scenarios with their own hydrology default, but not challenges', () => {
     game().setMode('real_world');
     expect(game().paramsForScenario(scenarioConfig({ enable_hydrology: true })).enable_hydrology).toBe(true);

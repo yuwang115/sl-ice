@@ -6,9 +6,10 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
   GameMode, SimulationSpeed, ChallengeStatus, UserParams, PhysicsStatePayload, GameEvent,
-  ScenarioConfig,
+  ScenarioConfig, ChallengeDefinition,
 } from '../engine/types';
 import { challenges } from '../challenges';
+import { lockedSwitches } from '../challenges/locks';
 import {
   buildCheckState, resolveChallengeOutcome, winConditionAtFinalStretch, type ChallengeOutcome,
 } from '../challenges/outcome';
@@ -187,6 +188,14 @@ function recordAttempt(progress: ChallengeProgress, won: boolean, score?: number
   };
 }
 
+/** The challenge whose attempt is in progress, if any. */
+function attemptChallenge(
+  s: Pick<GameStore, 'currentChallenge' | 'challengeResult'>,
+): ChallengeDefinition | undefined {
+  if (s.currentChallenge === null || s.challengeResult !== null) return undefined;
+  return challenges.find((c) => c.id === s.currentChallenge);
+}
+
 /** Unlock locked challenges whose unlock condition the won challenges now satisfy. */
 function unlockChallenges(progress: ChallengeProgress[]): ChallengeProgress[] {
   const wonIds = progress.filter((c) => c.status === 'won').map((c) => c.id);
@@ -258,6 +267,8 @@ export const useGameStore = create<GameStore>()(persist(
   params: { ...DEFAULT_PARAMS },
   setParam: (key, value) =>
     set((s) => {
+      // A switch the running challenge is built around stays on.
+      if (lockedSwitches(attemptChallenge(s)).has(key)) return s;
       const now = Date.now();
       const isNewAdjustment =
         key !== s._lastParamKey || now - s._lastParamChangeAt > PARAM_ADJUSTMENT_GAP_MS;

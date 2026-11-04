@@ -46,6 +46,12 @@ A 2D flowline (x–σ) Blatter–Pattyn model solved in a Web Worker.
   spread unconfined and shelf loss has no effect on the grounding line. Strong
   drag also stabilises grounding lines on retrograde beds, so `scenario_b_misi`
   uses a weaker `lateral_drag` (7e-4) to keep its overdeepening unstable.
+- **Ice cliffs (MICI, opt-in)** (`cliff-calving.ts`) — the Schlemm & Levermann
+  (2019) cliff-calving law `C = C₀·((F − F_c)/F_s)^s` (their Eqs. 23–27),
+  evaluated at the calving front with its actual freeboard `F = H − D` and
+  relative water depth `w = D/H`; the critical freeboard is raised by 60 m
+  (Bassis & Walker 2012). A thin shelf front never reaches that height, so an
+  intact shelf suppresses cliff failure.
 - **Ocean melt** (`ocean-melt.ts`) — two-box PICO-style quadratic melt. The
   geoengineering curtain shields floating ice landward of `curtain_position`
   (between the grounding line and the barrier); placed under grounded ice it

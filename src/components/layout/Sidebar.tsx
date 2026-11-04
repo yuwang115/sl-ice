@@ -2,6 +2,8 @@
  * Sidebar control panel with collapsible parameter sections.
  */
 
+import { challenges } from '../../challenges';
+import { lockedSwitches } from '../../challenges/locks';
 import { useGameStore } from '../../store/game-store';
 import { PARAM_SLIDER_RANGES } from '../../store/param-ranges';
 import { useUIStore } from '../../store/ui-store';
@@ -65,6 +67,10 @@ export default function Sidebar() {
   const setParam = useGameStore((s) => s.setParam);
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   const isZh = useUIStore((s) => s.language === 'zh');
+  // Switches the running challenge is built around (the store ignores changes too).
+  const attemptId = useGameStore((s) => (s.challengeResult === null ? s.currentChallenge : null));
+  const locked = lockedSwitches(challenges.find((c) => c.id === attemptId));
+  const lockedTitle = isZh ? '本挑战固定开启' : 'Fixed on for this challenge';
 
   const getTooltip = (key: string) => {
     const t = tooltips[key];
@@ -161,6 +167,8 @@ export default function Sidebar() {
               checked={!!params.enable_hydrology}
               onChange={(v) => setParam('enable_hydrology', v)}
               label={isZh ? '冰下水文' : 'Subglacial Hydrology'}
+              disabled={locked.has('enable_hydrology')}
+              title={locked.has('enable_hydrology') ? lockedTitle : undefined}
             />
           </div>
 
@@ -173,6 +181,8 @@ export default function Sidebar() {
               checked={!!params.enable_mici}
               onChange={(v) => setParam('enable_mici', v)}
               label={isZh ? '冰崖不稳定性' : 'Ice Cliff Instability'}
+              disabled={locked.has('enable_mici')}
+              title={locked.has('enable_mici') ? lockedTitle : undefined}
             />
           </div>
 
